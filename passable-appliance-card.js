@@ -1,18 +1,19 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.3
+ * Version: 1.0.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
- * Restores 100% exact graphical layouts, SVGs, animations, popups, and styles of:
- *  1. Refrigerator & Freezer (French Door + Water Dispenser + Freezer Drawer + Dispenser Popup)
+ * Restores 100% exact graphical layouts, SVGs, animations, embedded more-info-card controls,
+ * popup drag-handles, hot water presets, and styles for all 5 appliances:
+ *  1. Refrigerator & Freezer (French Door + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors)
  *  3. Laundry Center (Washer & Dryer Stack + Spin/Tumble Animations)
  *  4. Navien Water Heater (SVG Tankless Unit + Animated Flow Lines + Heating Pulse + Gauges)
  *  5. Smart Hose Timer (Duration Ring + Preset Chips + Watering Control + Badges)
  */
 
-const CARD_VERSION = "1.0.3";
+const CARD_VERSION = "1.0.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -46,6 +47,7 @@ class PassableApplianceCard extends LitElement {
     this._ovenTargetTemp = null;
     this._showFlushGuide = false;
     this._durationMinutes = 15;
+    this._embeddedCard = null;
     this._cardId = `pac-${Math.random().toString(36).substr(2, 9)}`;
   }
 
@@ -177,6 +179,71 @@ class PassableApplianceCard extends LitElement {
     return "refrigerator";
   }
 
+  async _showPopup(popup) {
+    this._popup = popup;
+    await this.updateComplete;
+
+    requestAnimationFrame(() => {
+      if (!this.shadowRoot) return;
+      const popupOverlay = this.shadowRoot.querySelector(".popup-overlay");
+      const popupContent = this.shadowRoot.querySelector(".popup-content");
+      if (popupOverlay) popupOverlay.classList.add("visible");
+      if (popupContent) popupContent.classList.add("visible");
+    });
+  }
+
+  _closePopup() {
+    if (!this.shadowRoot) {
+      this._popup = null;
+      return;
+    }
+    const popupOverlay = this.shadowRoot.querySelector(".popup-overlay");
+    const popupContent = this.shadowRoot.querySelector(".popup-content");
+
+    if (popupOverlay) popupOverlay.classList.remove("visible");
+    if (popupContent) {
+      popupContent.style.transform = "";
+      popupContent.classList.remove("visible");
+    }
+
+    setTimeout(() => {
+      this._popup = null;
+      this._embeddedCard = null;
+    }, 300);
+  }
+
+  _handleTouchStart(e) {
+    const popupContent = e.currentTarget;
+    if (popupContent.scrollTop > 0) return;
+    this._startY = e.touches[0].clientY;
+    this._currentY = this._startY;
+    popupContent.style.transition = "none";
+  }
+
+  _handleTouchMove(e) {
+    if (this._startY === undefined) return;
+    const popupContent = e.currentTarget;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - this._startY;
+    if (deltaY > 0 && popupContent.scrollTop <= 0) {
+      this._currentY = currentY;
+      popupContent.style.transform = `translateY(${deltaY}px)`;
+    }
+  }
+
+  _handleTouchEnd(e) {
+    if (this._startY === undefined) return;
+    const popupContent = e.currentTarget;
+    const deltaY = this._currentY - this._startY;
+    popupContent.style.transition = "";
+    if (deltaY > 100) {
+      this._closePopup();
+    } else {
+      popupContent.style.transform = "";
+    }
+    this._startY = undefined;
+  }
+
   render() {
     if (!this.hass || !this.config) return html``;
 
@@ -252,12 +319,12 @@ class PassableApplianceCard extends LitElement {
 
         <div class="card-content">
           <div class="fridge-body">
-            <!-- Left Door -->
+            <!-- Left Door with Dispenser -->
             <div class="door left-door ${doorStatus.state === "Fridge Open" ? "door-open" : ""}">
               <div class="fridge-handle"></div>
               <div class="left-door-content">
                 <div class="dispenser-group">
-                  <div class="dispenser ${isHeating ? "heating" : ""}" @click=${() => (this._popup = "dispenser")}>
+                  <div class="dispenser ${isHeating ? "heating" : ""}" @click=${() => this._showPopup("dispenser")}>
                     <div class="dispenser-screen"></div>
                     <div class="dispenser-lever"></div>
                   </div>
@@ -265,7 +332,7 @@ class PassableApplianceCard extends LitElement {
               </div>
             </div>
 
-            <!-- Right Door -->
+            <!-- Right Door with Temp Badge -->
             <div class="door right-door ${doorStatus.state === "Fridge Open" ? "door-open" : ""}">
               <div class="fridge-handle"></div>
               <div class="right-door-content">
@@ -295,46 +362,126 @@ class PassableApplianceCard extends LitElement {
   _renderRefrigeratorPopup() {
     if (this._popup !== "dispenser") return html``;
     const c = this.config;
+    const dispenserControl = c.dispenser_control;
     const iceMaker = this._getEntity(c.ice_maker_control);
     const waterFilter = this._getEntity(c.water_filter_status);
     const hotWaterStatus = this._getEntity(c.hot_water_status);
+    const hotWaterTime = this._getEntity(c.hot_water_status_time);
+
+    let statusText = hotWaterStatus.state !== "unavailable" ? hotWaterStatus.state : "Not Heating";
+    if (hotWaterStatus.state === "Heating" && hotWaterTime.state !== "Off" && hotWaterTime.state !== "unavailable") {
+      statusText += ` (${hotWaterTime.state} left)`;
+    }
+
+    let filterColorStyle = "";
+    let filterIcon = "mdi:filter-variant";
+    if (waterFilter.state === "Good") {
+      filterColorStyle = "color: var(--success-color, #4caf50);";
+      filterIcon = "mdi:filter-check";
+    } else if (waterFilter.state === "Replace") {
+      filterColorStyle = "color: var(--warning-color, #ffa726);";
+      filterIcon = "mdi:filter-outline";
+    } else if (waterFilter.state === "Expired") {
+      filterColorStyle = "color: var(--error-color, #ef5350);";
+      filterIcon = "mdi:filter-remove-outline";
+    }
+
+    // Embed native controls / more-info-card for dispenser_control
+    if (!this._embeddedCard && window.loadCardHelpers && dispenserControl) {
+      window.loadCardHelpers().then((helpers) => {
+        try {
+          const card = helpers.createCardElement({
+            type: "custom:more-info-card",
+            entity: dispenserControl,
+          });
+          card.hass = this.hass;
+          this._embeddedCard = card;
+          card.style.cssText = "--ha-card-background: transparent; --ha-card-box-shadow: none; --ha-card-border-width: 0; background: transparent; box-shadow: none; border: none;";
+          this.requestUpdate();
+        } catch (e) {
+          console.error("Failed to create embedded control card", e);
+        }
+      });
+    } else if (this._embeddedCard) {
+      this._embeddedCard.hass = this.hass;
+    }
 
     return html`
-      <div class="popup-overlay visible" @click=${() => (this._popup = null)}>
-        <div class="popup-content visible" @click=${(e) => e.stopPropagation()}>
+      <div class="popup-overlay visible" @click=${() => this._closePopup()}>
+        <div
+          class="popup-content visible"
+          @click=${(e) => e.stopPropagation()}
+          @touchstart=${this._handleTouchStart}
+          @touchmove=${this._handleTouchMove}
+          @touchend=${this._handleTouchEnd}
+        >
           <div class="drag-handle"></div>
           <div class="popup-header">
-            <h3>Dispenser Controls</h3>
-            <button class="close-button" @click=${() => (this._popup = null)}>
+            <button class="close-button" @click=${() => this._closePopup()}>
               <ha-icon icon="mdi:close"></ha-icon>
             </button>
+            <h3>Dispenser Controls</h3>
           </div>
 
           <div class="popup-controls">
-            <h4>Hot Water Presets</h4>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h4 style="margin: 0;">Hot Water Control</h4>
+              ${hotWaterStatus.state === "Heating" && c.hot_water_cancel_switch
+                ? html`
+                    <button
+                      class="floating-cancel-button"
+                      @click=${() => this._toggleEntity(c.hot_water_cancel_switch)}
+                      style="position: static; margin: 0;"
+                    >
+                      Cancel
+                    </button>
+                  `
+                : ""}
+            </div>
+
+            <div class="control-row status-row">
+              <ha-icon icon="mdi:water-boiler"></ha-icon>
+              <span class="control-label">Status:</span>
+              <span class="control-value">${statusText}</span>
+            </div>
+
+            <!-- Embedded Water Heater / Thermostat Dial Card -->
+            <div class="embedded-card-container" style="margin-top: 12px; margin-bottom: 12px;">
+              ${this._embeddedCard ? this._embeddedCard : html`<div style="text-align: center; padding: 20px;">Loading Native Controls...</div>`}
+            </div>
+
+            <!-- Preset Quick Temp Buttons -->
             <div class="preset-buttons">
-              <button class="preset-button" @click=${() => this._setTemperature(c.dispenser_control, 150)}>
-                <ha-icon icon="mdi:coffee-outline"></ha-icon> Cocoa (150°)
+              <button class="preset-button" @click=${() => this._setTemperature(dispenserControl, 150)}>
+                <ha-icon icon="mdi:coffee-outline"></ha-icon>
+                <span>Cocoa (150°)</span>
               </button>
-              <button class="preset-button" @click=${() => this._setTemperature(c.dispenser_control, 170)}>
-                <ha-icon icon="mdi:tea"></ha-icon> Tea (170°)
+              <button class="preset-button" @click=${() => this._setTemperature(dispenserControl, 170)}>
+                <ha-icon icon="mdi:tea"></ha-icon>
+                <span>Tea (170°)</span>
               </button>
-              <button class="preset-button" @click=${() => this._setTemperature(c.dispenser_control, 185)}>
-                <ha-icon icon="mdi:bowl-mix-outline"></ha-icon> Soup (185°)
+              <button class="preset-button" @click=${() => this._setTemperature(dispenserControl, 185)}>
+                <ha-icon icon="mdi:bowl-mix-outline"></ha-icon>
+                <span>Soup (185°)</span>
               </button>
             </div>
 
-            <div class="divider" style="height:1px; background:var(--divider-color); margin:12px 0;"></div>
+            <div class="divider"></div>
 
-            <div class="control-row" style="display:flex; justify-content:space-between; align-items:center;">
-              <span>Water Filter: <strong>${waterFilter.state}</strong></span>
+            <h4 style="margin: 0 0 8px 0;">Other Controls</h4>
+            <div class="control-row">
+              <ha-icon icon="${filterIcon}" style="${filterColorStyle}"></ha-icon>
+              <span class="control-label">Water Filter:</span>
+              <span class="control-value" style="${filterColorStyle}">${waterFilter.state}</span>
             </div>
 
-            <div class="control-row" style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-              <span>Ice Maker Control</span>
+            <div class="control-row">
+              <ha-icon icon="mdi:cube-outline"></ha-icon>
+              <span class="control-label">Ice Maker:</span>
               <ha-switch
                 .checked=${iceMaker.state === "on"}
                 @change=${() => this._toggleEntity(c.ice_maker_control)}
+                class="popup-switch"
               ></ha-switch>
             </div>
           </div>
@@ -526,7 +673,6 @@ class PassableApplianceCard extends LitElement {
 
         <div class="card-content">
           <div class="laundry-grid">
-            <!-- Washer Box -->
             <div class="laundry-unit-card ${isWasherActive ? "unit-active" : ""}">
               <div class="laundry-icon-frame ${isWasherActive ? "spinning" : ""}">
                 <ha-icon icon="mdi:washing-machine"></ha-icon>
@@ -539,7 +685,6 @@ class PassableApplianceCard extends LitElement {
               </div>
             </div>
 
-            <!-- Dryer Box -->
             <div class="laundry-unit-card ${isDryerActive ? "unit-active" : ""}">
               <div class="laundry-icon-frame ${isDryerActive ? "tumbling" : ""}">
                 <ha-icon icon="mdi:tumble-dryer"></ha-icon>
@@ -698,7 +843,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // STYLES (ORIGINAL CARD STYLES COMBINED)
+  // STYLES & GRAPHIC CSS
   // ==========================================
   static get styles() {
     return css`
@@ -826,7 +971,7 @@ class PassableApplianceCard extends LitElement {
         border: 1px solid rgba(0, 0, 0, 0.2);
       }
       .left-door-content {
-        padding: 16px;
+        padding: 16px 15px 16px 16px;
         height: 100%;
         display: flex;
         align-items: center;
@@ -1125,29 +1270,153 @@ class PassableApplianceCard extends LitElement {
       .btn-hose.start { background: #22c55e; color: white; }
       .btn-hose.stop { background: #ef4444; color: white; }
 
-      /* POPUP STYLES */
+      /* POPUP STYLES & BOTTOM SHEET */
       .popup-overlay {
         position: fixed;
-        top: 0; left: 0; width: 100%; height: 100%;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
         background-color: rgba(0, 0, 0, 0.5);
         backdrop-filter: blur(4px);
-        display: flex; justify-content: center; align-items: center;
+        -webkit-backdrop-filter: blur(4px);
+        display: flex;
+        justify-content: center;
+        align-items: center;
         z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        touch-action: none;
+      }
+      .popup-overlay.visible {
+        opacity: 1;
+        visibility: visible;
       }
       .popup-content {
-        background-color: var(--ha-card-background, #242426);
-        padding: 24px; border-radius: 24px;
-        width: 90%; max-width: 450px;
+        background-color: var(--ha-card-background, var(--card-background-color, white));
+        padding: 24px;
+        border-radius: 24px;
+        width: 90%;
+        max-width: 450px;
+        max-height: 90vh;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+        box-shadow: 0px 8px 32px rgba(0, 0, 0, 0.24);
+        color: var(--primary-text-color);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+        transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      .popup-content.visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      .drag-handle {
+        width: 36px;
+        height: 5px;
+        flex-shrink: 0;
+        background-color: #888;
+        border-radius: 3px;
+        margin: -12px auto 16px auto;
+      }
+      .popup-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid var(--divider-color);
+        padding-bottom: 12px;
+      }
+      .popup-header h3 {
+        margin: 0;
+        font-size: 1.5em;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        flex-grow: 1;
+      }
+      .close-button {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+      }
+      .control-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-height: 40px;
+      }
+      .control-row ha-icon {
+        color: var(--secondary-text-color);
+        --mdc-icon-size: 24px;
+      }
+      .control-label {
+        flex-grow: 1;
+        font-size: 1.1em;
+      }
+      .control-value {
+        font-weight: 600;
+        font-size: 1.1em;
         color: var(--primary-text-color);
       }
-      .popup-header { display: flex; align-items: center; justify-content: space-between; }
-      .close-button { background: none; border: none; cursor: pointer; color: var(--primary-text-color); }
-      .preset-buttons { display: flex; gap: 8px; margin-top: 12px; }
+      .floating-cancel-button {
+        background-color: var(--error-color, #ef4444);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .preset-buttons {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 8px;
+      }
       .preset-button {
-        flex: 1; padding: 10px; border-radius: 10px; border: none;
-        background: rgba(128, 128, 128, 0.15); color: var(--primary-text-color);
-        font-weight: 600; cursor: pointer;
-        display: flex; align-items: center; justify-content: center; gap: 6px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        background-color: rgba(128, 128, 128, 0.15);
+        color: var(--primary-text-color);
+        border: none;
+        border-radius: 12px;
+        padding: 12px 8px;
+        font-weight: 500;
+        font-size: 0.9em;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      }
+      .preset-button:hover {
+        transform: scale(1.03);
+      }
+      .divider {
+        border-top: 1px solid var(--divider-color);
+        margin: 8px 0;
+      }
+
+      @media (max-width: 768px) {
+        .popup-overlay { align-items: flex-end; }
+        .popup-content {
+          width: 100%; max-width: none;
+          border-radius: 24px 24px 0 0;
+          transform: translateY(100%);
+          padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
+        }
+        .popup-content.visible { transform: translateY(0); }
       }
     `;
   }
@@ -1244,7 +1513,7 @@ class PassableApplianceCardEditor extends LitElement {
         <div class="form-group">
           <label class="form-label">Device Prefix (Optional Shortcut)</label>
           <ha-textfield
-            label="Device Prefix (e.g. lg_fridge or ge_range)"
+            label="Device Prefix (e.g. dt507030)"
             .value=${this.config.device_prefix || ""}
             .configValue=${"device_prefix"}
             @input=${this._onFieldChange}
@@ -1297,6 +1566,15 @@ class PassableApplianceCardEditor extends LitElement {
 
         <ha-selector
           .hass=${this.hass}
+          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
+          .value=${this.config.dispenser_control || ""}
+          .configValue=${"dispenser_control"}
+          .label=${"Dispenser Control Entity (for dial/presets popup)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
           .value=${this.config.fridge_temp_current || ""}
           .configValue=${"fridge_temp_current"}
@@ -1328,6 +1606,15 @@ class PassableApplianceCardEditor extends LitElement {
           .value=${this.config.ice_maker_control || ""}
           .configValue=${"ice_maker_control"}
           .label=${"Ice Maker Switch"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.water_filter_status || ""}
+          .configValue=${"water_filter_status"}
+          .label=${"Water Filter Status Sensor"}
           @value-changed=${this._onFieldChange}
         ></ha-selector>
       </div>
