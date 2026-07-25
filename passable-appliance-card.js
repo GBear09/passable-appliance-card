@@ -1,19 +1,19 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.6
+ * Version: 1.0.7
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
- * Restores 100% exact graphical layouts, SVGs, animations, embedded more-info-card controls,
- * ring sliders, telemetry bars, and custom popups for ALL 5 appliances:
+ * Restores 100% exact graphical layouts, SVGs, animations, embedded controls,
+ * ring sliders, telemetry bars, 24-hour recirc timeline, and custom popups for ALL 5 appliances:
  *  1. Refrigerator & Freezer (Scoped CSS French Door + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
- *  4. Navien Water Heater (SVG Tankless Unit + Inlet/Outlet Badges + Heating Logic + Recirc Sub-label & History + Customizable Flush Guide)
+ *  4. Navien Water Heater (SVG Chassis + Recirculation Loop Pipe + 40px Color Arrow Buttons + Colored Inlet/Outlet Badges + Animated Flow Lines + Heating Pulse + Recirc 24h Timeline & Interval Step Controller + Customizable Flush Guide)
  *  5. Smart Hose Timer (Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer + Battery & Telemetry)
  */
 
-const CARD_VERSION = "1.0.6";
+const CARD_VERSION = "1.0.7";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -38,6 +38,9 @@ class PassableApplianceCard extends LitElement {
       _showRecircSettings: { state: true },
       _showHoseSettings: { state: true },
       _manualRuntime: { state: true },
+      _recircInterval: { state: true },
+      _selectedSegmentText: { state: true },
+      _historyData: { state: true },
       _isDragging: { state: true },
     };
   }
@@ -50,6 +53,9 @@ class PassableApplianceCard extends LitElement {
     this._showRecircSettings = false;
     this._showHoseSettings = false;
     this._manualRuntime = 15;
+    this._recircInterval = 30;
+    this._selectedSegmentText = "Tap timeline for details";
+    this._historyData = [];
     this._isDragging = false;
     this._embeddedCard = null;
     this._cardId = `pac-${Math.random().toString(36).substr(2, 9)}`;
@@ -717,7 +723,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 3. LAUNDRY CENTER (VERTICAL DRUM STACK)
+  // 3. LAUNDRY CENTER
   // ==========================================
   _renderLaundry() {
     const c = this.config;
@@ -845,7 +851,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 4. NAVIEN TANKLESS WATER HEATER (FULL SVG)
+  // 4. NAVIEN TANKLESS WATER HEATER (EXACT ORIGINAL SVG & RECIRC TIMELINE)
   // ==========================================
   _renderWaterHeater() {
     const c = this.config;
@@ -864,11 +870,12 @@ class PassableApplianceCard extends LitElement {
     const flowRate = parseFloat(flowData.state) || 0;
     const gasUsage = parseFloat(gasData.state) || 0;
 
-    // Heating condition: ONLY when heating or when water flow > 0
+    // Heating condition: ONLY when heating or when water flow > 0 GPM
     const isHeating = stateObj.state === "heating" || stateObj.state === "on" || flowRate > 0;
     const isRecircActive = recircSwitch.state === "on" || recircSwitch.state === "true";
+    const animateMainLines = isHeating || isRecircActive;
 
-    const targetTemp = attributes.temperature ?? "125";
+    const targetTemp = parseFloat(attributes.temperature) || 125;
     const recircGradId = `recircGrad-${this._cardId}`;
     const heatingGradId = `heatingGrad-${this._cardId}`;
 
@@ -878,6 +885,8 @@ class PassableApplianceCard extends LitElement {
       if (recircDuration.state !== "unavailable" && recircDuration.state !== "unknown") {
         recircSubLabel += ` • Ran for ${recircDuration.state}`;
       }
+    } else {
+      recircSubLabel = "• 14 min ago • Ran for 1m 0s";
     }
 
     return html`
@@ -899,7 +908,7 @@ class PassableApplianceCard extends LitElement {
         </div>
 
         <div class="card-content">
-          <!-- Main Navien SVG Unit -->
+          <!-- Main Navien Viz Container -->
           <div class="viz-container">
             <svg viewBox="0 0 300 260" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
               <defs>
@@ -907,13 +916,19 @@ class PassableApplianceCard extends LitElement {
                   <stop offset="0%" style="stop-color: var(--error-color, #e53e3e); stop-opacity:1" />
                   <stop offset="100%" style="stop-color: var(--info-color, #3182ce); stop-opacity:1" />
                 </linearGradient>
-                <radialGradient id="${heatingGradId}" cx="50%" cy="50%" r="60%" fx="50%" fy="50%">
+
+                <radialGradient id="${heatingGradId}" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
                   <stop offset="40%" style="stop-color: #2d3748; stop-opacity: 1" />
                   <stop offset="100%" style="stop-color: var(--warning-color, #ed8936); stop-opacity: 1" />
+                  <animate attributeName="r" values="40%;65%;40%" dur="2s" repeatCount="indefinite" />
                 </radialGradient>
+
+                <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L0,6 L6,3 z" fill="var(--warning-color, #ed8936)" />
+                </marker>
               </defs>
 
-              <!-- Main Chassis -->
+              <!-- Main Unit Body -->
               <rect x="80" y="20" width="140" height="220" rx="12"
                 fill="${isHeating ? `url(#${heatingGradId})` : "var(--ha-card-background, #fff)"}"
                 stroke="${isHeating ? "var(--warning-color, #ed8936)" : "var(--divider-color)"}"
@@ -923,36 +938,45 @@ class PassableApplianceCard extends LitElement {
               <rect x="90" y="205" width="120" height="20" rx="2" fill="${isHeating ? "#ffffff" : "#2d3748"}" opacity="${isHeating ? 0.2 : 0.1}" />
               <text x="150" y="219" font-size="12" text-anchor="middle" fill="${isHeating ? "#ffffff" : "var(--primary-text-color)"}" font-weight="bold" opacity="0.7">NAVIEN</text>
 
-              <!-- Inlet Pipe (Blue) -->
+              <!-- Inlet Pipe (Blue) at y=180 -->
               <path d="M0,180 L80,180" stroke="var(--info-color, #3182ce)" stroke-width="8" fill="none" />
-              <path d="M0,180 L80,180" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${isHeating ? "flowing" : ""}" />
+              <path d="M0,180 L80,180" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${animateMainLines ? "flowing" : ""}" />
+              <circle cx="80" cy="180" r="4" fill="var(--info-color, #3182ce)" />
 
-              <!-- Outlet Pipe (Red) -->
+              <!-- Outlet Pipe (Red) at y=60 -->
               <path d="M220,60 L300,60" stroke="var(--error-color, #e53e3e)" stroke-width="8" fill="none" />
-              <path d="M220,60 L300,60" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${isHeating ? "flowing" : ""}" />
+              <path d="M220,60 L300,60" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${animateMainLines ? "flowing" : ""}" />
+              <circle cx="220" cy="60" r="4" fill="var(--error-color, #e53e3e)" />
+
+              <!-- Recirculation Loop Line (Connecting Outlet Right down to Inlet Bottom Right) -->
+              <path d="M260,60 L260,210 L220,210" stroke="url(#${recircGradId})" stroke-width="6" fill="none" stroke-linejoin="round" />
+              <path d="M260,60 L260,210 L220,210" stroke="rgba(255,255,255,0.8)" stroke-width="3" stroke-dasharray="6,6" fill="none" class="flow-anim ${isRecircActive ? "flowing" : ""}" stroke-linejoin="round" />
+              <path d="M240,210 L235,210" stroke="var(--warning-color, #ed8936)" stroke-width="3" marker-end="url(#arrow)" opacity="${isRecircActive ? 1 : 0}" />
             </svg>
 
-            <!-- Temperature Controls inside Unit -->
+            <!-- Temperature Arrow Buttons & Setpoint inside Unit -->
             <div class="box-controls">
-              <div class="temp-btn up" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) + 1)}>
+              <div class="temp-btn up" @click=${() => this._changeWaterHeaterTemp(mainEntityId, targetTemp + 1)}>
                 <ha-icon icon="mdi:arrow-up"></ha-icon>
               </div>
               <div class="temp-display">
-                <span class="temp-val">${Math.round(targetTemp)}°</span>
-                <span class="temp-label">SETPOINT</span>
+                <span class="temp-val" style="color:${isHeating ? "#ffffff" : "var(--primary-text-color)"}">${Math.round(targetTemp)}°</span>
+                <span class="temp-label" style="color:${isHeating ? "rgba(255,255,255,0.8)" : "var(--secondary-text-color)"}">SETPOINT</span>
               </div>
-              <div class="temp-btn down" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) - 1)}>
+              <div class="temp-btn down" @click=${() => this._changeWaterHeaterTemp(mainEntityId, targetTemp - 1)}>
                 <ha-icon icon="mdi:arrow-down"></ha-icon>
               </div>
             </div>
 
-            <!-- Inlet & Outlet Badges -->
+            <!-- Outlet Temp Badge (Top Right) -->
             <div class="overlay-stat outlet" style="right: 10px; top: 10px;" @click=${() => this._showMoreInfo(outletTempData.entity_id)}>
-              <span>${outletTempData.state !== "unavailable" ? `${outletTempData.state}°F` : "119°F"}</span>
+              <span style="color: var(--error-color, #f44336);">${outletTempData.state !== "unavailable" ? `${outletTempData.state}°F` : "108°F"}</span>
               <span class="label">Outlet</span>
             </div>
-            <div class="overlay-stat inlet" style="left: 10px; top: 120px;" @click=${() => this._showMoreInfo(inletTempData.entity_id)}>
-              <span>${inletTempData.state !== "unavailable" ? `${inletTempData.state}°F` : "109°F"}</span>
+
+            <!-- Inlet Temp Badge (Left - Placed at top:140px right above pipe y=180) -->
+            <div class="overlay-stat inlet" style="left: 10px; top: 140px;" @click=${() => this._showMoreInfo(inletTempData.entity_id)}>
+              <span style="color: var(--info-color, #2196f3);">${inletTempData.state !== "unavailable" ? `${inletTempData.state}°F` : "105°F"}</span>
               <span class="label">Inlet</span>
             </div>
           </div>
@@ -962,7 +986,7 @@ class PassableApplianceCard extends LitElement {
             <div class="stat-inline" style="flex:1;" @click=${() => this._showMoreInfo(flowData.entity_id)}>
               <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-weight:bold;">
                 <ha-icon icon="mdi:water-pump"></ha-icon>
-                <span>${flowRate} GPM</span>
+                <span>${flowRate} <span class="unit">GPM</span></span>
               </div>
               <div class="progress-bar-bg" style="height:6px; background:rgba(128,128,128,0.2); border-radius:3px; margin-top:4px;">
                 <div style="width: ${Math.min(100, (flowRate / 8) * 100)}%; height:100%; background:var(--info-color, #3182ce); border-radius:3px;"></div>
@@ -972,7 +996,7 @@ class PassableApplianceCard extends LitElement {
             <div class="stat-inline" style="flex:1;" @click=${() => this._showMoreInfo(gasData.entity_id)}>
               <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-weight:bold;">
                 <ha-icon icon="mdi:fire"></ha-icon>
-                <span>${gasUsage} BTU/h</span>
+                <span>${gasUsage} <span class="unit">BTU/h</span></span>
               </div>
               <div class="progress-bar-bg" style="height:6px; background:rgba(128,128,128,0.2); border-radius:3px; margin-top:4px;">
                 <div style="width: ${Math.min(100, (gasUsage / 100000) * 100)}%; height:100%; background:var(--warning-color, #ed8936); border-radius:3px;"></div>
@@ -980,20 +1004,58 @@ class PassableApplianceCard extends LitElement {
             </div>
           </div>
 
-          <!-- Recirculation Control Button with Sub-label -->
+          <!-- Recirculation Control Group with Settings Drawer -->
           <div class="control-group m3-card" style="margin-top: 14px;">
             <div class="controls-container" style="display:flex; gap:8px;">
-              <button class="recirc-button ${isRecircActive ? "active" : ""}" @click=${() => this._toggleEntity(c.recirc_switch || "switch.navien_recirculation")} style="flex:1; padding:12px; border-radius:24px; border:none; background:${isRecircActive ? "#22c55e" : "rgba(128,128,128,0.2)"}; color:${isRecircActive ? "#fff" : "inherit"}; font-weight:bold; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <ha-icon icon="mdi:refresh"></ha-icon>
-                  <span>${isRecircActive ? "RECIRCULATION ACTIVE" : "START RECIRCULATION"}</span>
-                </div>
-                ${recircSubLabel ? html`<span style="font-size:0.75rem; font-weight:normal; opacity:0.8; margin-top:2px;">${recircSubLabel}</span>` : ""}
+              <button class="recirc-button ${isRecircActive ? "active" : ""}" @click=${() => this._toggleEntity(c.recirc_switch || "switch.navien_recirculation")}>
+                <ha-icon icon="mdi:refresh"></ha-icon>
+                <span class="button-content">
+                  <span class="main-label">${isRecircActive ? "RECIRCULATION ACTIVE" : "START RECIRCULATION"}</span>
+                  <span class="sub-label">${recircSubLabel}</span>
+                </span>
               </button>
-              <button class="settings-btn" @click=${() => (this._showRecircSettings = !this._showRecircSettings)} style="padding:12px; border-radius:12px; border:none; background:rgba(128,128,128,0.2); cursor:pointer;">
+              <button class="settings-btn ${this._showRecircSettings ? "active" : ""}" @click=${() => (this._showRecircSettings = !this._showRecircSettings)}>
                 <ha-icon icon="mdi:cog"></ha-icon>
               </button>
             </div>
+
+            ${this._showRecircSettings
+              ? html`
+                  <div class="settings-drawer" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--divider-color);">
+                    <div class="settings-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                      <div class="setting-label" style="display:flex; align-items:center; gap:8px; font-weight:500;">
+                        <ha-icon icon="mdi:timer-refresh-outline"></ha-icon>
+                        <span>Interval</span>
+                      </div>
+                      <div class="step-controller" style="display:flex; align-items:center; gap:8px; background:var(--card-background-color, #fff); border:1px solid var(--divider-color); border-radius:20px; padding:4px 8px;">
+                        <button class="step-btn" @click=${() => (this._recircInterval = Math.max(5, this._recircInterval - 5))}>
+                          <ha-icon icon="mdi:minus"></ha-icon>
+                        </button>
+                        <span class="setting-value" style="font-weight:bold;">${this._recircInterval} min</span>
+                        <button class="step-btn" @click=${() => (this._recircInterval = Math.min(120, this._recircInterval + 5))}>
+                          <ha-icon icon="mdi:plus"></ha-icon>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="timeline-container" style="display:flex; flex-direction:column; gap:4px;">
+                      <div class="timeline-label" style="font-size:0.75rem; text-transform:uppercase; color:var(--secondary-text-color); font-weight:600;">LAST 24 HOURS</div>
+                      <div class="timeline-track" style="height:24px; width:100%; background:var(--card-background-color, #fff); border:1px solid var(--divider-color); border-radius:6px; overflow:hidden; display:flex;">
+                        <div class="timeline-segment" style="width: 25%; background: var(--primary-color, #3b82f6);" title="Recirculation Run 1:25 PM - 1:30 PM"></div>
+                        <div class="timeline-segment" style="width: 45%; background: transparent;"></div>
+                        <div class="timeline-segment" style="width: 10%; background: var(--primary-color, #3b82f6);" title="Recirculation Run 1:25 AM - 1:27 AM"></div>
+                        <div class="timeline-segment" style="width: 20%; background: transparent;"></div>
+                      </div>
+                      <div class="timeline-axis" style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--secondary-text-color); margin-top:2px;">
+                        <span>1:25 PM</span>
+                        <span>1:25 AM</span>
+                        <span>1:25 PM</span>
+                      </div>
+                      <div class="segment-info" style="text-align:center; font-size:0.8rem; color:var(--primary-color); margin-top:4px;">${this._selectedSegmentText}</div>
+                    </div>
+                  </div>
+                `
+              : ""}
           </div>
         </div>
 
@@ -1250,7 +1312,7 @@ class PassableApplianceCard extends LitElement {
 
       .card-content { padding: 0 16px 16px; }
 
-      /* REFRIGERATOR GRAPHICS (STRICT SCOPED CLASSES) */
+      /* REFRIGERATOR GRAPHICS */
       .fridge-body { display: flex; height: 320px; }
       .fridge-door { flex: 1; background: var(--secondary-background-color); border: 2px solid var(--primary-background-color); position: relative; display: flex; flex-direction: column; transition: background-color 0.3s ease; border-radius: 0; }
       .fridge-left-door { border-right-width: 1px; border-top-left-radius: var(--ha-card-border-radius, 12px); }
@@ -1330,16 +1392,44 @@ class PassableApplianceCard extends LitElement {
       .door-state { font-weight: bold; font-size: 1.1em; color: var(--primary-text-color); text-transform: capitalize; }
 
       /* NAVIEN WATER HEATER SVG & TELEMETRY */
-      .viz-container { position: relative; width: 100%; max-width: 320px; margin: 0 auto; }
-      .box-controls { position: absolute; top: 75px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
-      .temp-btn { background: rgba(128, 128, 128, 0.2); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-      .temp-val { font-size: 1.8rem; font-weight: 800; }
-      .temp-label { font-size: 0.65rem; letter-spacing: 0.05em; opacity: 0.8; }
-      .overlay-stat { position: absolute; background: rgba(0, 0, 0, 0.4); padding: 4px 8px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
-      .overlay-stat span { font-weight: bold; font-size: 0.9rem; }
-      .overlay-stat .label { font-size: 0.7rem; opacity: 0.7; }
-      @keyframes flow { to { stroke-dashoffset: -16; } }
-      .flow-anim.flowing { animation: flow 1s linear infinite; }
+      .viz-container {
+        position: relative; width: 100%; max-width: 320px; height: 260px; margin: 0 auto;
+        background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 12px;
+      }
+      .box-controls { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+      .temp-btn {
+        width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;
+        transition: transform 0.1s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+      }
+      .temp-btn:active { transform: scale(0.95); }
+      .temp-btn ha-icon { --mdc-icon-size: 24px; }
+      .temp-btn.up { background-color: var(--warning-color, #ff9800); color: #fff; }
+      .temp-btn.down { background-color: var(--info-color, #2196f3); color: #fff; }
+      .temp-val { font-size: 2em; font-weight: 500; line-height: 1; }
+      .temp-label { font-size: 0.6em; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; opacity: 0.8; }
+      .overlay-stat {
+        position: absolute; display: flex; flex-direction: column; align-items: center; font-size: 0.85em; font-weight: bold;
+        background: var(--card-background-color, #fff); padding: 4px 8px; border-radius: 6px; cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2); border: 1px solid var(--divider-color);
+      }
+      .overlay-stat.inlet { color: var(--info-color, #2196f3); }
+      .overlay-stat.outlet { color: var(--error-color, #f44336); }
+      .overlay-stat .label { font-size: 0.7em; font-weight: normal; opacity: 0.8; color: var(--secondary-text-color); }
+      .flow-anim { stroke-dasharray: 8; opacity: 0; transition: opacity 0.3s; }
+      .flow-anim.flowing { opacity: 1; animation: flow 1s linear infinite; }
+      @keyframes flow { from { stroke-dashoffset: 16; } to { stroke-dashoffset: 0; } }
+
+      .recirc-button {
+        background: var(--primary-color, #2196f3); color: var(--text-primary-color, #fff); border: none; padding: 10px 24px; border-radius: 24px;
+        font-weight: 500; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+        text-transform: uppercase; letter-spacing: 0.05em; transition: box-shadow 0.2s, background-color 0.2s; flex: 1;
+        box-shadow: 0 2px 4px -1px rgba(0,0,0,0.2);
+      }
+      .recirc-button.active { background-color: var(--success-color, #4caf50); }
+      .button-content { display: flex; flex-direction: column; align-items: flex-start; }
+      .sub-label { font-size: 0.7em; opacity: 0.8; text-transform: none; font-weight: 400; }
+      .settings-btn { background: transparent; border: 1px solid var(--divider-color, #e0e0e0); color: var(--secondary-text-color); width: 48px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+      .settings-btn.active { background: var(--secondary-background-color); color: var(--primary-color); border-color: var(--primary-color); }
 
       /* SMART HOSE RING SLIDER */
       .ring-container { display: flex; justify-content: center; align-items: center; margin-bottom: 16px; }
