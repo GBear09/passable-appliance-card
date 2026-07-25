@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.7
+ * Version: 1.0.8
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -9,11 +9,11 @@
  *  1. Refrigerator & Freezer (Scoped CSS French Door + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
- *  4. Navien Water Heater (SVG Chassis + Recirculation Loop Pipe + 40px Color Arrow Buttons + Colored Inlet/Outlet Badges + Animated Flow Lines + Heating Pulse + Recirc 24h Timeline & Interval Step Controller + Customizable Flush Guide)
+ *  4. Navien Water Heater (SVG Chassis + Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT under Temp + Sleek Interval Pill + 24h Barcode Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer + Battery & Telemetry)
  */
 
-const CARD_VERSION = "1.0.7";
+const CARD_VERSION = "1.0.8";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -165,6 +165,35 @@ class PassableApplianceCard extends LitElement {
       entity_id: entityId,
       temperature: temp,
     });
+  }
+
+  _toggleRecircSettings(recircEntityId) {
+    this._fireHaptic("light");
+    this._showRecircSettings = !this._showRecircSettings;
+    if (this._showRecircSettings && recircEntityId) {
+      this._fetchHistory(recircEntityId);
+    }
+  }
+
+  async _fetchHistory(entityId) {
+    if (!this.hass || !entityId) return;
+    const now = new Date();
+    const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const endTime = now.toISOString();
+    try {
+      const history = await this.hass.callApi(
+        "GET",
+        `history/period/${startTime}?filter_entity_id=${entityId}&end_time=${endTime}`
+      );
+      if (history && history.length > 0) {
+        this._historyData = history[0];
+      } else {
+        this._historyData = [];
+      }
+    } catch (e) {
+      console.error("Failed to fetch history for timeline", e);
+      this._historyData = [];
+    }
   }
 
   _detectApplianceType() {
@@ -851,7 +880,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 4. NAVIEN TANKLESS WATER HEATER (EXACT ORIGINAL SVG & RECIRC TIMELINE)
+  // 4. NAVIEN TANKLESS WATER HEATER (100% MATCH)
   // ==========================================
   _renderWaterHeater() {
     const c = this.config;
@@ -886,7 +915,7 @@ class PassableApplianceCard extends LitElement {
         recircSubLabel += ` • Ran for ${recircDuration.state}`;
       }
     } else {
-      recircSubLabel = "• 14 min ago • Ran for 1m 0s";
+      recircSubLabel = "• 20 min ago • Ran for 1m 0s";
     }
 
     return html`
@@ -948,13 +977,13 @@ class PassableApplianceCard extends LitElement {
               <path d="M220,60 L300,60" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${animateMainLines ? "flowing" : ""}" />
               <circle cx="220" cy="60" r="4" fill="var(--error-color, #e53e3e)" />
 
-              <!-- Recirculation Loop Line (Connecting Outlet Right down to Inlet Bottom Right) -->
+              <!-- Recirculation Loop Line -->
               <path d="M260,60 L260,210 L220,210" stroke="url(#${recircGradId})" stroke-width="6" fill="none" stroke-linejoin="round" />
               <path d="M260,60 L260,210 L220,210" stroke="rgba(255,255,255,0.8)" stroke-width="3" stroke-dasharray="6,6" fill="none" class="flow-anim ${isRecircActive ? "flowing" : ""}" stroke-linejoin="round" />
               <path d="M240,210 L235,210" stroke="var(--warning-color, #ed8936)" stroke-width="3" marker-end="url(#arrow)" opacity="${isRecircActive ? 1 : 0}" />
             </svg>
 
-            <!-- Temperature Arrow Buttons & Setpoint inside Unit -->
+            <!-- Temperature Arrow Buttons & CENTERED SETPOINT UNDERNEATH TEMP -->
             <div class="box-controls">
               <div class="temp-btn up" @click=${() => this._changeWaterHeaterTemp(mainEntityId, targetTemp + 1)}>
                 <ha-icon icon="mdi:arrow-up"></ha-icon>
@@ -970,13 +999,13 @@ class PassableApplianceCard extends LitElement {
 
             <!-- Outlet Temp Badge (Top Right) -->
             <div class="overlay-stat outlet" style="right: 10px; top: 10px;" @click=${() => this._showMoreInfo(outletTempData.entity_id)}>
-              <span style="color: var(--error-color, #f44336);">${outletTempData.state !== "unavailable" ? `${outletTempData.state}°F` : "108°F"}</span>
+              <span style="color: var(--error-color, #f44336);">${outletTempData.state !== "unavailable" ? `${outletTempData.state}°F` : "124°F"}</span>
               <span class="label">Outlet</span>
             </div>
 
             <!-- Inlet Temp Badge (Left - Placed at top:140px right above pipe y=180) -->
             <div class="overlay-stat inlet" style="left: 10px; top: 140px;" @click=${() => this._showMoreInfo(inletTempData.entity_id)}>
-              <span style="color: var(--info-color, #2196f3);">${inletTempData.state !== "unavailable" ? `${inletTempData.state}°F` : "105°F"}</span>
+              <span style="color: var(--info-color, #2196f3);">${inletTempData.state !== "unavailable" ? `${inletTempData.state}°F` : "73°F"}</span>
               <span class="label">Inlet</span>
             </div>
           </div>
@@ -1014,7 +1043,7 @@ class PassableApplianceCard extends LitElement {
                   <span class="sub-label">${recircSubLabel}</span>
                 </span>
               </button>
-              <button class="settings-btn ${this._showRecircSettings ? "active" : ""}" @click=${() => (this._showRecircSettings = !this._showRecircSettings)}>
+              <button class="settings-btn ${this._showRecircSettings ? "active" : ""}" @click=${() => this._toggleRecircSettings(c.recirc_switch || "switch.navien_recirculation")}>
                 <ha-icon icon="mdi:cog"></ha-icon>
               </button>
             </div>
@@ -1027,29 +1056,26 @@ class PassableApplianceCard extends LitElement {
                         <ha-icon icon="mdi:timer-refresh-outline"></ha-icon>
                         <span>Interval</span>
                       </div>
-                      <div class="step-controller" style="display:flex; align-items:center; gap:8px; background:var(--card-background-color, #fff); border:1px solid var(--divider-color); border-radius:20px; padding:4px 8px;">
-                        <button class="step-btn" @click=${() => (this._recircInterval = Math.max(5, this._recircInterval - 5))}>
+                      <div class="step-controller-pill">
+                        <button class="pill-btn" @click=${() => (this._recircInterval = Math.max(5, this._recircInterval - 5))}>
                           <ha-icon icon="mdi:minus"></ha-icon>
                         </button>
-                        <span class="setting-value" style="font-weight:bold;">${this._recircInterval} min</span>
-                        <button class="step-btn" @click=${() => (this._recircInterval = Math.min(120, this._recircInterval + 5))}>
+                        <span class="pill-value">${this._recircInterval} min</span>
+                        <button class="pill-btn" @click=${() => (this._recircInterval = Math.min(120, this._recircInterval + 5))}>
                           <ha-icon icon="mdi:plus"></ha-icon>
                         </button>
                       </div>
                     </div>
 
                     <div class="timeline-container" style="display:flex; flex-direction:column; gap:4px;">
-                      <div class="timeline-label" style="font-size:0.75rem; text-transform:uppercase; color:var(--secondary-text-color); font-weight:600;">LAST 24 HOURS</div>
-                      <div class="timeline-track" style="height:24px; width:100%; background:var(--card-background-color, #fff); border:1px solid var(--divider-color); border-radius:6px; overflow:hidden; display:flex;">
-                        <div class="timeline-segment" style="width: 25%; background: var(--primary-color, #3b82f6);" title="Recirculation Run 1:25 PM - 1:30 PM"></div>
-                        <div class="timeline-segment" style="width: 45%; background: transparent;"></div>
-                        <div class="timeline-segment" style="width: 10%; background: var(--primary-color, #3b82f6);" title="Recirculation Run 1:25 AM - 1:27 AM"></div>
-                        <div class="timeline-segment" style="width: 20%; background: transparent;"></div>
+                      <div class="timeline-label" style="font-size:0.75em; text-transform:uppercase; color:var(--secondary-text-color); font-weight:600;">LAST 24 HOURS</div>
+                      <div class="timeline-track" style="height:24px; width:100%; background:var(--card-background-color, #fff); border:1px solid var(--divider-color); border-radius:6px; overflow:hidden; display:flex; position:relative;">
+                        ${this._renderTimelineBarcode()}
                       </div>
                       <div class="timeline-axis" style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--secondary-text-color); margin-top:2px;">
-                        <span>1:25 PM</span>
-                        <span>1:25 AM</span>
-                        <span>1:25 PM</span>
+                        <span>1:30 PM</span>
+                        <span>1:30 AM</span>
+                        <span>1:30 PM</span>
                       </div>
                       <div class="segment-info" style="text-align:center; font-size:0.8rem; color:var(--primary-color); margin-top:4px;">${this._selectedSegmentText}</div>
                     </div>
@@ -1062,6 +1088,60 @@ class PassableApplianceCard extends LitElement {
         ${this._renderFlushGuideModal()}
       </ha-card>
     `;
+  }
+
+  _renderTimelineBarcode() {
+    if (this._historyData && this._historyData.length > 0) {
+      const now = new Date().getTime();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      const start = now - twentyFourHours;
+      const data = [...this._historyData].sort(
+        (a, b) => new Date(a.last_changed).getTime() - new Date(b.last_changed).getTime()
+      );
+
+      const segments = [];
+      let lastTime = start;
+      let lastState = data.length > 0 ? (data[0].state === "on" ? "off" : "on") : "off";
+
+      data.forEach((item) => {
+        const changeTime = new Date(item.last_changed).getTime();
+        if (changeTime > lastTime) {
+          const duration = changeTime - lastTime;
+          const pct = (duration / twentyFourHours) * 100;
+          segments.push({
+            width: pct,
+            color: lastState === "on" ? "var(--primary-color, #3b82f6)" : "transparent",
+            text: `${lastState === "on" ? "Running" : "Idle"} (${Math.round(duration / 60000)}m)`,
+          });
+        }
+        lastState = item.state;
+        lastTime = changeTime;
+      });
+
+      if (lastTime < now) {
+        const duration = now - lastTime;
+        const pct = (duration / twentyFourHours) * 100;
+        segments.push({
+          width: pct,
+          color: lastState === "on" ? "var(--primary-color, #3b82f6)" : "transparent",
+          text: `${lastState === "on" ? "Running" : "Idle"} (${Math.round(duration / 60000)}m)`,
+        });
+      }
+
+      return segments.map(
+        (seg) => html`<div class="timeline-segment" style="width: ${seg.width}%; background-color: ${seg.color}; flex-shrink: 0;" title=${seg.text} @click=${() => (this._selectedSegmentText = seg.text)}></div>`
+      );
+    }
+
+    // Default barcode pattern for short 1-2 minute recirc runs across 24h
+    const ticks = [];
+    for (let i = 0; i < 48; i++) {
+      const isRun = i % 3 === 0 || i % 7 === 0;
+      ticks.push(
+        html`<div class="timeline-segment" style="flex: 1; height: 100%; background: ${isRun ? "var(--primary-color, #3b82f6)" : "transparent"}; margin: 0 1px;" title=${isRun ? "Recirculation Run: 1m" : "Idle"}></div>`
+      );
+    }
+    return ticks;
   }
 
   _renderFlushGuideModal() {
@@ -1396,7 +1476,8 @@ class PassableApplianceCard extends LitElement {
         position: relative; width: 100%; max-width: 320px; height: 260px; margin: 0 auto;
         background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 12px;
       }
-      .box-controls { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+      .box-controls { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+      .temp-display { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 2px 0; }
       .temp-btn {
         width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;
         transition: transform 0.1s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.15);
@@ -1405,8 +1486,8 @@ class PassableApplianceCard extends LitElement {
       .temp-btn ha-icon { --mdc-icon-size: 24px; }
       .temp-btn.up { background-color: var(--warning-color, #ff9800); color: #fff; }
       .temp-btn.down { background-color: var(--info-color, #2196f3); color: #fff; }
-      .temp-val { font-size: 2em; font-weight: 500; line-height: 1; }
-      .temp-label { font-size: 0.6em; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; opacity: 0.8; }
+      .temp-val { font-size: 2.2em; font-weight: bold; line-height: 1; text-align: center; }
+      .temp-label { font-size: 0.6em; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; opacity: 0.8; text-align: center; margin-top: 2px; }
       .overlay-stat {
         position: absolute; display: flex; flex-direction: column; align-items: center; font-size: 0.85em; font-weight: bold;
         background: var(--card-background-color, #fff); padding: 4px 8px; border-radius: 6px; cursor: pointer;
@@ -1430,6 +1511,18 @@ class PassableApplianceCard extends LitElement {
       .sub-label { font-size: 0.7em; opacity: 0.8; text-transform: none; font-weight: 400; }
       .settings-btn { background: transparent; border: 1px solid var(--divider-color, #e0e0e0); color: var(--secondary-text-color); width: 48px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
       .settings-btn.active { background: var(--secondary-background-color); color: var(--primary-color); border-color: var(--primary-color); }
+
+      /* STEPPER PILL CONTROLLER */
+      .step-controller-pill {
+        display: flex; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.4);
+        border-radius: 20px; padding: 6px 14px; gap: 16px; border: none; min-width: 140px;
+      }
+      .pill-btn {
+        background: none; border: none; color: var(--primary-text-color); cursor: pointer; padding: 0;
+        display: flex; align-items: center; justify-content: center; font-size: 1.2rem; opacity: 0.8;
+      }
+      .pill-btn:hover { opacity: 1; }
+      .pill-value { font-weight: 600; font-size: 0.95rem; color: var(--primary-text-color); white-space: nowrap; }
 
       /* SMART HOSE RING SLIDER */
       .ring-container { display: flex; justify-content: center; align-items: center; margin-bottom: 16px; }
