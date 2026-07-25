@@ -1,119 +1,121 @@
 # Passable Appliance Card
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-v1.0.1-blue.svg)](https://github.com/GBear09/passable-appliance-card/releases)
-[![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
+[![version](https://img.shields.io/github/v/release/GBear09/passable-appliance-card)](https://github.com/GBear09/passable-appliance-card/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A dynamic, universal Home Assistant Lovelace dashboard card for monitoring and controlling your household appliances.
+A dynamic, consolidated, universal custom card for Home Assistant supporting 5 different major home appliances:
 
-The **Passable Appliance Card** automatically adapts its layout and features based on your configured appliance or explicit type selection.
-
----
-
-## 🚀 Features
-
-Supports 5 primary appliance types out of the box:
-
-- 🧊 **Refrigerator & Freezer**: Dual-zone temperature control, door-open alert banners, ice maker toggles, water filter status gauges, and hot water dispenser heating status & cancellation.
-- 🍳 **Induction Range & Oven**: Active 5-burner cooktop element status grid, power level %, dual-oven (Upper & Lower) control, setpoints, and heating state badges.
-- 🧺 **Laundry Center (Washer & Dryer)**: Real-time cycle states, operation stage tracking, remaining time countdowns, active spin/wash animations, and status chips.
-- 💧 **Water Heater (Navien & Generic)**: Circular temperature adjustment, hot water flow rate (GPM), gas usage rate (BTU/h), recirculation toggles, and operational status.
-- 🚿 **Smart Hose Timer**: Duration selector chips (5m to 60m), start/stop watering controls (B-hyve & standard valves), battery %, signal strength, and watering history.
+1. **🧊 Refrigerator & Freezer**: French door graphic layout with water dispenser cutout screen & lever, bottom freezer drawer, door open alerts, and bottom-sheet dispenser controls popup modal with hot water quick presets (Cocoa 150°, Tea 170°, Soup 185°), water filter indicator, and ice maker toggle switch.
+2. **🍳 Induction Range & Oven**: 5-burner cooktop graphic layout with exact burner placement percentages, bridge sync lines, top oven control panel with SVG knobs & screen, upper/lower oven doors, and oven control popups with **Oven Light** toggle switch.
+3. **🧺 Laundry Center**: Vertical stack washer & dryer cards with top control panel (knobs & time screen), spinning drum animation, cycle stage badges, and remaining time countdowns. Supports `sensor`, `select`, and `input_select` operation entities.
+4. **💧 Tankless Water Heater (Navien)**: Vector SVG tankless unit graphic with inlet/outlet temperature badges, animated water flow lines, heating radial pulse animation, flow rate (GPM) & gas usage (BTU/h) progress bars, recirculation control button with last-run history, and a customizable **Flush & Descale Guide** modal window.
+5. **🚿 Smart Hose Timer**: Circular arc ring timer dial slider (1–120 MIN), watering action button with timestamp, gear settings drawer, battery % status chip, and Next/Last watering telemetry cards.
 
 ---
 
-## 📦 Installation
+## 📸 Screenshots
 
-### Option 1: HACS (Recommended)
+| Refrigerator | Induction Range | Laundry Center | Water Heater | Hose Timer |
+|---|---|---|---|---|
+| French door graphic & dispenser modal | 5-burner cooktop & oven popups with light | Vertical stack & spinning drum | SVG tankless unit & flush guide | Ring dial slider & watering control |
+
+---
+
+## 📦 Installation via HACS
 
 1. Open **HACS** in your Home Assistant instance.
-2. Click the three dots in the top right corner and select **Custom repositories**.
-3. Paste the repository URL: `https://github.com/GBear09/passable-appliance-card`
-4. Select **Dashboard** as the Category and click **Add**.
-5. Click **Explore & Download Repositories**, search for **Passable Appliance Card**, and click **Download**.
-6. Reload your browser resources.
-
-### Option 2: Manual Installation
-
-1. Download `passable-appliance-card.js` from the [latest release](https://github.com/GBear09/passable-appliance-card/releases).
-2. Copy `passable-appliance-card.js` to your Home Assistant `www` folder (`/config/www/passable-appliance-card.js`).
-3. Add the resource reference in **Settings -> Dashboards -> Resources**:
-   - **Url**: `/local/passable-appliance-card.js?v=1.0.1`
-   - **Resource Type**: `JavaScript Module`
+2. Click the three dots in the top-right corner and select **Custom repositories**.
+3. Add Repository URL: `https://github.com/GBear09/passable-appliance-card`
+4. Select Category: **Dashboard** (or **Lovelace**).
+5. Click **Add**, find **Passable Appliance Card**, and click **Download**.
+6. Hard refresh your browser (`Ctrl + Shift + R` or `Cmd + Shift + R`).
 
 ---
 
-## 🛠 Configuration Examples
+## ⚙️ Configuration Examples
 
-### 1. Refrigerator Example (Auto-discovery via Prefix)
-
+### 1. Refrigerator Example
 ```yaml
 type: custom:passable-appliance-card
-title: Kitchen Refrigerator
 appliance_type: refrigerator
-device_prefix: lg_fridge
+title: Kitchen Refrigerator
+fridge_control: water_heater.dt507030_fridge
+freezer_control: water_heater.dt507030_freezer
+dispenser_control: water_heater.dt507030_dispenser
+fridge_temp_current: sensor.dt507030_current_temperature_fridge
+freezer_temp_current: sensor.dt507030_current_temperature_freezer
+door_status: sensor.dt507030_door_status
+ice_maker_control: switch.dt507030_ice_maker_control
+water_filter_status: sensor.dt507030_water_filter_status
+hot_water_in_use: binary_sensor.dt507030_hot_water_in_use
+hot_water_set_temp: sensor.dt507030_hot_water_set_temp
+hot_water_current_temp: sensor.dt507030_hot_water_status_current_temp
+hot_water_status: sensor.dt507030_hot_water_status_status
+hot_water_status_time: sensor.dt507030_hot_water_status_time_until_ready
+hot_water_cancel_switch: switch.dt507030_k_cup_hot_water
 ```
 
-### 2. Induction Range & Oven Example
-
+### 2. Tankless Water Heater Example (Customizable Flush Guide)
 ```yaml
 type: custom:passable-appliance-card
-title: Induction Cooktop & Range
-appliance_type: induction_range
-device_prefix: ge_profile_range
-```
-
-### 3. Laundry Center Example
-
-```yaml
-type: custom:passable-appliance-card
-title: Laundry Room
-appliance_type: laundry
-washer_status: sensor.washer_run_state
-washer_operation: sensor.washer_wash_cycle
-washer_remaining_time: sensor.washer_initial_time_remaining
-dryer_status: sensor.dryer_run_state
-dryer_operation: sensor.dryer_dry_cycle
-dryer_remaining_time: sensor.dryer_initial_time_remaining
-```
-
-### 4. Water Heater Example
-
-```yaml
-type: custom:passable-appliance-card
-title: Navien Tankless Water Heater
 appliance_type: water_heater
+title: Tankless Water Heater
 entity: water_heater.navien_water_heater
+inlet_temp_sensor: sensor.navien_inlet_temperature
+outlet_temp_sensor: sensor.navien_outlet_temperature
+flow_rate_sensor: sensor.navien_water_flow_rate
+gas_usage_sensor: sensor.navien_gas_consumption_rate
+recirc_switch: switch.navien_recirculation
+recirc_last_run: sensor.navien_recirc_last_run
+recirc_duration: sensor.navien_recirc_duration
+
+# Optional Flush Guide Customization
+flush_procedure_title: "NPE-240A2 Flush Procedure"
+flush_materials:
+  - "4 Gallons White Vinegar (Food Grade)"
+  - "Submersible Utility Pump"
+  - "2 x Washing Machine Hoses"
+  - "5 Gallon Bucket"
+```
+
+### 3. Induction Range & Oven Example
+```yaml
+type: custom:passable-appliance-card
+appliance_type: induction_range
+title: Induction Range
+device_prefix: sqdr174020p
+upper_control: water_heater.sqdr174020p_oven
+lower_control: water_heater.sqdr174020p_lower_oven
+upper_light_entity: select.sqdr174020p_light
+lower_light_entity: select.sqdr174020p_lower_oven_light
+```
+
+### 4. Laundry Center Example
+```yaml
+type: custom:passable-appliance-card
+appliance_type: laundry
+title: Laundry Center
+washer_status: sensor.washer_current_status
+washer_operation: select.washer_operation
+washer_remaining_time: sensor.washer_remaining_time
+dryer_status: sensor.dryer_current_status
+dryer_operation: select.dryer_operation
+dryer_remaining_time: sensor.dryer_remaining_time
 ```
 
 ### 5. Smart Hose Timer Example
-
 ```yaml
 type: custom:passable-appliance-card
-title: Garden Hose Timer
 appliance_type: smart_hose_timer
-valve_entity: valve.front_lawn_hose
-battery_sensor: sensor.front_lawn_hose_battery
-signal_sensor: sensor.front_lawn_hose_rssi
+title: Smart Hose Timer
+valve_entity: valve.pool_zone
+battery_sensor: sensor.pool_battery_level
+history_sensor: sensor.pool_zone_history
 bhyve_mode: true
 ```
 
 ---
 
-## ⚙️ Configuration Reference
-
-| Parameter | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `type` | string | **Required** | Must be `custom:passable-appliance-card` |
-| `title` | string | Optional | Card title heading |
-| `appliance_type` | string | `auto` | Appliance layout mode: `auto`, `refrigerator`, `induction_range`, `laundry`, `water_heater`, `smart_hose_timer` |
-| `device_prefix` | string | Optional | Shared prefix string for entity auto-discovery |
-| `entity` | string | Optional | Primary entity ID (e.g. `water_heater.xxx`) |
-| `valve_entity` | string | Optional | Valve entity ID for hose timer |
-| `bhyve_mode` | boolean | `true` | Enable B-hyve specific watering service integration |
-
----
-
 ## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
+MIT License. Created by GBear09.
