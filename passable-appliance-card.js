@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.10
+ * Version: 1.0.11
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -9,13 +9,11 @@
  *  1. Refrigerator & Freezer (Scoped CSS French Door + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
- *  4. Navien Water Heater (SVG Chassis + Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT under Temp + Sleek Interval Pill + Interactive Timeline showing Start/Stop Times & Pointer Cursor + Customizable Flush Guide)
- *  5. Smart Hose Timer (Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer + Battery & Telemetry)
- * 
- * Popups: Uniform header with X button + title beside it + divider line + right-aligned switches.
+ *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
+ *  5. Smart Hose Timer (Full Parameter Setup + Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer with Smart Watering & Rain Delay Toggles + Battery/History Telemetry + Theme Colors)
  */
 
-const CARD_VERSION = "1.0.10";
+const CARD_VERSION = "1.0.11";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -987,20 +985,20 @@ class PassableApplianceCard extends LitElement {
               <rect x="90" y="205" width="120" height="20" rx="2" fill="${isHeating ? "#ffffff" : "#2d3748"}" opacity="${isHeating ? 0.2 : 0.1}" />
               <text x="150" y="219" font-size="12" text-anchor="middle" fill="${isHeating ? "#ffffff" : "var(--primary-text-color)"}" font-weight="bold" opacity="0.7">NAVIEN</text>
 
+              <!-- Recirculation Loop Line (RENDERED BEHIND OUTLET PIPE) -->
+              <path d="M260,60 L260,210 L220,210" stroke="url(#${recircGradId})" stroke-width="6" fill="none" stroke-linejoin="round" />
+              <path d="M260,60 L260,210 L220,210" stroke="rgba(255,255,255,0.8)" stroke-width="3" stroke-dasharray="6,6" fill="none" class="flow-anim ${isRecircActive ? "flowing" : ""}" stroke-linejoin="round" />
+              <path d="M240,210 L235,210" stroke="var(--warning-color, #ed8936)" stroke-width="3" marker-end="url(#arrow)" opacity="${isRecircActive ? 1 : 0}" />
+
               <!-- Inlet Pipe (Blue) at y=180 -->
               <path d="M0,180 L80,180" stroke="var(--info-color, #3182ce)" stroke-width="8" fill="none" />
               <path d="M0,180 L80,180" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${animateMainLines ? "flowing" : ""}" />
               <circle cx="80" cy="180" r="4" fill="var(--info-color, #3182ce)" />
 
-              <!-- Outlet Pipe (Red) at y=60 -->
+              <!-- Outlet Pipe (Red) at y=60 (RENDERED ON TOP OF RECIRC LINE) -->
               <path d="M220,60 L300,60" stroke="var(--error-color, #e53e3e)" stroke-width="8" fill="none" />
               <path d="M220,60 L300,60" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${animateMainLines ? "flowing" : ""}" />
               <circle cx="220" cy="60" r="4" fill="var(--error-color, #e53e3e)" />
-
-              <!-- Recirculation Loop Line -->
-              <path d="M260,60 L260,210 L220,210" stroke="url(#${recircGradId})" stroke-width="6" fill="none" stroke-linejoin="round" />
-              <path d="M260,60 L260,210 L220,210" stroke="rgba(255,255,255,0.8)" stroke-width="3" stroke-dasharray="6,6" fill="none" class="flow-anim ${isRecircActive ? "flowing" : ""}" stroke-linejoin="round" />
-              <path d="M240,210 L235,210" stroke="var(--warning-color, #ed8936)" stroke-width="3" marker-end="url(#arrow)" opacity="${isRecircActive ? 1 : 0}" />
             </svg>
 
             <!-- Temperature Arrow Buttons & CENTERED SETPOINT UNDERNEATH TEMP -->
@@ -1017,14 +1015,14 @@ class PassableApplianceCard extends LitElement {
               </div>
             </div>
 
-            <!-- Outlet Temp Badge (Top Right) -->
-            <div class="overlay-stat outlet" style="right: 10px; top: 10px;" @click=${() => this._showMoreInfo(outletTempData.entity_id)}>
+            <!-- Outlet Temp Badge (Top Right - Aligned flush with outlet pipe at top: 38px) -->
+            <div class="overlay-stat outlet" style="right: 10px; top: 38px;" @click=${() => this._showMoreInfo(outletTempData.entity_id)}>
               <span style="color: var(--error-color, #f44336);">${outletTempData.state !== "unavailable" ? `${outletTempData.state}°F` : "124°F"}</span>
               <span class="label">Outlet</span>
             </div>
 
-            <!-- Inlet Temp Badge (Left - Placed at top:140px right above pipe y=180) -->
-            <div class="overlay-stat inlet" style="left: 10px; top: 140px;" @click=${() => this._showMoreInfo(inletTempData.entity_id)}>
+            <!-- Inlet Temp Badge (Left - Aligned flush with inlet pipe at top: 158px) -->
+            <div class="overlay-stat inlet" style="left: 10px; top: 158px;" @click=${() => this._showMoreInfo(inletTempData.entity_id)}>
               <span style="color: var(--info-color, #2196f3);">${inletTempData.state !== "unavailable" ? `${inletTempData.state}°F` : "73°F"}</span>
               <span class="label">Inlet</span>
             </div>
@@ -1089,7 +1087,7 @@ class PassableApplianceCard extends LitElement {
 
                     <div class="timeline-container" style="display:flex; flex-direction:column; gap:4px;">
                       <div class="timeline-label" style="font-size:0.75em; text-transform:uppercase; color:var(--secondary-text-color); font-weight:600;">LAST 24 HOURS</div>
-                      <div class="timeline-track" style="height:24px; width:100%; background:var(--card-background-color, #111827); border:1px solid var(--divider-color); border-radius:6px; overflow:hidden; display:flex; position:relative; cursor:pointer;">
+                      <div class="timeline-track" style="height:24px; width:100%; background:var(--card-background-color, rgba(128,128,128,0.1)); border:1px solid var(--divider-color); border-radius:6px; overflow:hidden; display:flex; position:relative; cursor:pointer;">
                         ${this._renderTimelineBarcode()}
                       </div>
                       <div class="timeline-axis" style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--secondary-text-color); margin-top:2px;">
@@ -1097,7 +1095,7 @@ class PassableApplianceCard extends LitElement {
                         <span>1:50 AM</span>
                         <span>1:50 PM</span>
                       </div>
-                      <div class="segment-info" style="text-align:center; font-size:0.85rem; font-weight:600; color:var(--success-color, #86efac); margin-top:4px;">${this._selectedSegmentText}</div>
+                      <div class="segment-info" style="text-align:center; font-size:0.85rem; font-weight:600; color:var(--primary-color, var(--state-active-color, #3b82f6)); margin-top:4px;">${this._selectedSegmentText}</div>
                     </div>
                   </div>
                 `
@@ -1139,7 +1137,7 @@ class PassableApplianceCard extends LitElement {
 
           segments.push({
             width: pct,
-            color: lastState === "on" ? "var(--success-color, #86efac)" : "transparent",
+            color: lastState === "on" ? "var(--primary-color, #3b82f6)" : "transparent",
             text: text,
           });
         }
@@ -1159,7 +1157,7 @@ class PassableApplianceCard extends LitElement {
 
         segments.push({
           width: pct,
-          color: lastState === "on" ? "var(--success-color, #86efac)" : "transparent",
+          color: lastState === "on" ? "var(--primary-color, #3b82f6)" : "transparent",
           text: text,
         });
       }
@@ -1176,7 +1174,7 @@ class PassableApplianceCard extends LitElement {
       );
     }
 
-    // Default barcode pattern with exact start / stop times when clicked
+    // Default barcode pattern using HA dashboard theme color variable
     const segments = [];
     const numSegments = 48; // 30 min slots over 24h
     const slotMs = 30 * 60 * 1000;
@@ -1185,7 +1183,6 @@ class PassableApplianceCard extends LitElement {
       const segStart = startMs + i * slotMs;
       const segEnd = segStart + slotMs;
       const isRun = i % 3 === 0 || i % 7 === 0;
-      const stateTxt = isRun ? "Running" : "Idle";
       const startStr = this._formatShortTime(new Date(segStart));
       const endStr = this._formatShortTime(new Date(segEnd));
       const text = isRun
@@ -1196,7 +1193,7 @@ class PassableApplianceCard extends LitElement {
         html`
           <div
             class="timeline-segment"
-            style="flex: 1; height: 100%; background: ${isRun ? "var(--success-color, #86efac)" : "transparent"}; margin: 0 1px; cursor: pointer;"
+            style="flex: 1; height: 100%; background: ${isRun ? "var(--primary-color, #3b82f6)" : "transparent"}; margin: 0 1px; cursor: pointer;"
             title=${text}
             @click=${() => this._selectTimelineSegment(text)}
           ></div>
@@ -1262,19 +1259,34 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 5. SMART HOSE TIMER
+  // 5. SMART HOSE TIMER (FULL PARAMETERS & THEME COLORS)
   // ==========================================
   _renderSmartHoseTimer() {
     const c = this.config;
     const valve = this._getEntity(c.valve_entity);
-    const battery = c.battery_sensor ? this._getEntity(c.battery_sensor) : null;
+    const stateSens = c.state_sensor ? this._getEntity(c.state_sensor) : null;
     const history = c.history_sensor ? this._getEntity(c.history_sensor) : null;
+    const battery = c.battery_sensor ? this._getEntity(c.battery_sensor) : null;
+    const nextWatering = c.next_watering_sensor ? this._getEntity(c.next_watering_sensor) : null;
+    const smartWatering = c.smart_watering_switch ? this._getEntity(c.smart_watering_switch) : null;
+    const rainDelay = c.rain_delay_switch ? this._getEntity(c.rain_delay_switch) : null;
 
     const isOpen = valve.state === "open" || valve.state === "on";
-    const statusText = isOpen ? "Watering" : "Idle";
+    const statusText = isOpen ? "Watering" : (stateSens && stateSens.state !== "unavailable" ? stateSens.state : "Idle");
+
+    let lastRunTime = "--";
+    let lastGallons = "--";
+    let lastStart = "--";
+    if (history && history.attributes) {
+      if (history.attributes.run_time) lastRunTime = history.attributes.run_time + " min";
+      if (history.attributes.consumption_gallons !== undefined) lastGallons = history.attributes.consumption_gallons + " gal";
+      if (history.attributes.start_time) lastStart = this._formatShortTime(new Date(history.attributes.start_time));
+    }
+
+    let currentRuntime = valve.attributes && valve.attributes.current_runtime ? Math.floor(valve.attributes.current_runtime / 60) : 0;
 
     const maxVal = 120;
-    const currentVal = this._manualRuntime;
+    const currentVal = isOpen ? Math.min(maxVal, currentRuntime) : this._manualRuntime;
     const pct = currentVal / maxVal;
     const radius = 40;
     const circumference = 2 * Math.PI * radius;
@@ -1291,12 +1303,12 @@ class PassableApplianceCard extends LitElement {
               <ha-icon icon="${isOpen ? "mdi:sprinkler" : "mdi:sprinkler-variant"}" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
               ${c.title || "Smart Hose Timer"}
             </h1>
-            <p class="subtitle">${statusText}</p>
+            <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
           </div>
           <div class="header-right">
             ${battery && battery.state !== "unavailable"
               ? html`
-                  <div class="status-chip idle" style="margin-right:6px;">
+                  <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer; margin-right:6px;">
                     <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
                     ${battery.state}%
                   </div>
@@ -1307,56 +1319,91 @@ class PassableApplianceCard extends LitElement {
         </div>
 
         <div class="card-content">
-          <div class="ring-container">
-            <div class="ring-slider" @pointerdown=${this._startHoseDrag} @pointermove=${this._onHoseDrag} @pointerup=${this._endHoseDrag} style="touch-action: none; cursor: pointer;">
-              <svg viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="${radius}" fill="none" stroke="var(--divider-color, rgba(128,128,128,0.2))" stroke-width="6"></circle>
-                <circle cx="50" cy="50" r="${radius}" fill="none" stroke="${isOpen ? "var(--info-color, #03a9f4)" : "var(--primary-color, #3b82f6)"}" stroke-width="6" stroke-dasharray="${dasharray}" stroke-linecap="round" transform="rotate(-90 50 50)"></circle>
-                <circle cx="${knobX}" cy="${knobY}" r="5" fill="#fff" stroke="var(--primary-color, #3b82f6)" stroke-width="2"></circle>
-              </svg>
-              <div class="ring-content">
-                <span class="ring-value">${currentVal}</span>
-                <span class="ring-label">MIN</span>
-              </div>
-            </div>
-          </div>
+          ${c.bhyve_mode !== false
+            ? html`
+                <div class="ring-container">
+                  <div class="ring-slider" @pointerdown=${this._startHoseDrag} @pointermove=${this._onHoseDrag} @pointerup=${this._endHoseDrag} style="touch-action: none; cursor: ${isOpen ? 'default' : 'pointer'};">
+                    <svg viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="${radius}" fill="none" stroke="var(--divider-color, rgba(128,128,128,0.2))" stroke-width="6"></circle>
+                      <circle cx="50" cy="50" r="${radius}" fill="none" stroke="${isOpen ? "var(--info-color, #03a9f4)" : "var(--primary-color)"}" stroke-width="6" stroke-dasharray="${dasharray}" stroke-linecap="round" transform="rotate(-90 50 50)" style="transition: stroke-dasharray 0.1s linear;"></circle>
+                      ${!isOpen
+                        ? html`
+                            <circle cx="${knobX}" cy="${knobY}" r="5" fill="#fff" stroke="var(--primary-color)" stroke-width="2" style="transition: cx 0.1s linear, cy 0.1s linear;"></circle>
+                          `
+                        : ""}
+                    </svg>
+                    <div class="ring-content">
+                      <span class="ring-value" style="color: ${isOpen ? 'var(--info-color, #03a9f4)' : 'var(--primary-text-color)'}">${currentVal}</span>
+                      <span class="ring-label">MIN</span>
+                    </div>
+                  </div>
+                </div>
+              `
+            : ""}
 
           <div class="control-group m3-card" style="margin-top: 14px;">
             <div class="controls-container" style="display:flex; gap:8px;">
-              <button class="recirc-button ${isOpen ? "active" : ""}" @click=${() => this._toggleHoseWatering()} style="flex:1; padding:14px; border-radius:24px; border:none; background:${isOpen ? "#ef4444" : "#22c55e"}; color:white; font-weight:bold; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+              <button class="recirc-button ${isOpen ? "active" : ""}" @click=${() => this._toggleHoseWatering()} style="flex:1; padding:12px 20px; border-radius:24px; border:none; background:${isOpen ? "var(--error-color, #ef4444)" : "var(--primary-color)"}; color:white; font-weight:500; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; text-transform:uppercase; letter-spacing:0.05em;">
                 <ha-icon icon="${isOpen ? "mdi:water-off" : "mdi:water"}"></ha-icon>
-                <span>${isOpen ? "STOP WATERING" : `START WATERING (${this._manualRuntime}m)`}</span>
+                <span class="button-content">
+                  <span class="main-label">${isOpen ? "Stop Watering" : "Start Watering"}</span>
+                  ${!isOpen
+                    ? html`<span class="sub-label">• ${lastStart !== '--' ? lastStart : `Set: ${this._manualRuntime}m`}</span>`
+                    : html`<span class="sub-label">• ${currentRuntime} min elapsed</span>`}
+                </span>
               </button>
-              <button class="settings-btn" @click=${() => (this._showHoseSettings = !this._showHoseSettings)} style="padding:12px; border-radius:12px; border:none; background:rgba(128,128,128,0.2); cursor:pointer;">
+              <button class="settings-btn ${this._showHoseSettings ? "active" : ""}" @click=${() => (this._showHoseSettings = !this._showHoseSettings)}>
                 <ha-icon icon="mdi:cog"></ha-icon>
               </button>
             </div>
 
             ${this._showHoseSettings
               ? html`
-                  <div class="settings-drawer" style="margin-top:10px; padding:10px; background:rgba(0,0,0,0.1); border-radius:8px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                      <span>Rain Delay</span>
-                      <ha-switch .checked=${this._getEntity(c.rain_delay_switch).state === "on"} @change=${() => this._toggleEntity(c.rain_delay_switch)}></ha-switch>
-                    </div>
+                  <div class="settings-drawer" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--divider-color); display:flex; flex-direction:column; gap:12px;">
+                    ${smartWatering
+                      ? html`
+                          <div class="control-row">
+                            <div class="control-label-group">
+                              <ha-icon icon="mdi:auto-fix"></ha-icon>
+                              <span class="control-label">Smart Watering</span>
+                            </div>
+                            <ha-switch .checked=${smartWatering.state === "on"} @change=${() => this._toggleEntity(c.smart_watering_switch)} class="popup-switch"></ha-switch>
+                          </div>
+                        `
+                      : ""}
+                    ${rainDelay
+                      ? html`
+                          <div class="control-row">
+                            <div class="control-label-group">
+                              <ha-icon icon="mdi:weather-pouring"></ha-icon>
+                              <span class="control-label">Rain Delay</span>
+                            </div>
+                            <ha-switch .checked=${rainDelay.state === "on"} @change=${() => this._toggleEntity(c.rain_delay_switch)} class="popup-switch"></ha-switch>
+                          </div>
+                        `
+                      : ""}
                   </div>
                 `
               : ""}
           </div>
 
           <div class="stats-row" style="margin-top: 14px; display: flex; gap: 12px;">
-            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px;">
+            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px; cursor:pointer;" @click=${() => this._showMoreInfo(c.next_watering_sensor)}>
               <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--secondary-text-color);">
                 <ha-icon icon="mdi:calendar-clock"></ha-icon> <span>Next</span>
               </div>
-              <div style="font-weight:bold; margin-top:4px;">Ready</div>
+              <div style="font-weight:bold; margin-top:4px; font-size:0.85rem;">
+                ${nextWatering && nextWatering.state !== "unavailable" ? this._formatShortTime(new Date(nextWatering.state)) : "Ready"}
+              </div>
             </div>
 
-            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px;">
+            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px; cursor:pointer;" @click=${() => this._showMoreInfo(c.history_sensor)}>
               <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--secondary-text-color);">
                 <ha-icon icon="mdi:history"></ha-icon> <span>Last</span>
               </div>
-              <div style="font-weight:bold; margin-top:4px; color:var(--info-color, #3182ce);">${history && history.state !== "unavailable" ? history.state : "31 min • 187 gal"}</div>
+              <div style="font-weight:bold; margin-top:4px; font-size:0.85rem; color:var(--primary-color);">
+                ${history && history.state !== "unavailable" ? history.state : `${lastRunTime !== '--' ? lastRunTime : '31 min'} • ${lastGallons !== '--' ? lastGallons : '187 gal'}`}
+              </div>
             </div>
           </div>
         </div>
@@ -2047,6 +2094,24 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.state_sensor || ""}
+          .configValue=${"state_sensor"}
+          .label=${"State Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.history_sensor || ""}
+          .configValue=${"history_sensor"}
+          .label=${"History Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
           .value=${this.config.battery_sensor || ""}
           .configValue=${"battery_sensor"}
           .label=${"Battery Sensor (Optional)"}
@@ -2056,9 +2121,27 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.signal_sensor || ""}
-          .configValue=${"signal_sensor"}
-          .label=${"Signal Strength Sensor (Optional)"}
+          .value=${this.config.next_watering_sensor || ""}
+          .configValue=${"next_watering_sensor"}
+          .label=${"Next Watering Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "switch" } }}
+          .value=${this.config.smart_watering_switch || ""}
+          .configValue=${"smart_watering_switch"}
+          .label=${"Smart Watering Switch (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "switch" } }}
+          .value=${this.config.rain_delay_switch || ""}
+          .configValue=${"rain_delay_switch"}
+          .label=${"Rain Delay Switch (Optional)"}
           @value-changed=${this._onFieldChange}
         ></ha-selector>
       </div>
