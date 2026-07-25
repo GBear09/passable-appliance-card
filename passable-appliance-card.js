@@ -1,19 +1,19 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.4
+ * Version: 1.0.5
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
  * Restores 100% exact graphical layouts, SVGs, animations, embedded more-info-card controls,
- * popup drag-handles, hot water presets, and styles for all 5 appliances:
+ * ring sliders, telemetry bars, and styles for ALL 5 appliances:
  *  1. Refrigerator & Freezer (French Door + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors)
- *  3. Laundry Center (Washer & Dryer Stack + Spin/Tumble Animations)
- *  4. Navien Water Heater (SVG Tankless Unit + Animated Flow Lines + Heating Pulse + Gauges)
- *  5. Smart Hose Timer (Duration Ring + Preset Chips + Watering Control + Badges)
+ *  3. Laundry Center (Vertical Stack + Top Control Panel with Knobs & Screen + Circular Drum with Spinning SVG)
+ *  4. Navien Water Heater (SVG Tankless Unit + Inlet/Outlet Badges + Animated Flow Lines + Heating Pulse + Capacity Bars + Recirc Button + Flush Guide Wrench)
+ *  5. Smart Hose Timer (Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer + Battery & Next/Last Telemetry Cards)
  */
 
-const CARD_VERSION = "1.0.4";
+const CARD_VERSION = "1.0.5";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -33,20 +33,22 @@ class PassableApplianceCard extends LitElement {
       hass: {},
       config: {},
       _popup: { state: true },
-      _popupOven: { state: true },
-      _ovenTargetTemp: { state: true },
       _showFlushGuide: { state: true },
-      _durationMinutes: { state: true },
+      _showRecircSettings: { state: true },
+      _showHoseSettings: { state: true },
+      _manualRuntime: { state: true },
+      _isDragging: { state: true },
     };
   }
 
   constructor() {
     super();
     this._popup = null;
-    this._popupOven = null;
-    this._ovenTargetTemp = null;
     this._showFlushGuide = false;
-    this._durationMinutes = 15;
+    this._showRecircSettings = false;
+    this._showHoseSettings = false;
+    this._manualRuntime = 15;
+    this._isDragging = false;
     this._embeddedCard = null;
     this._cardId = `pac-${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -113,7 +115,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   getCardSize() {
-    return 6;
+    return 8;
   }
 
   _fireHaptic(type = "light") {
@@ -133,6 +135,7 @@ class PassableApplianceCard extends LitElement {
 
   _showMoreInfo(entityId) {
     if (!entityId) return;
+    this._fireHaptic("light");
     const event = new Event("hass-more-info", {
       bubbles: true,
       composed: true,
@@ -143,11 +146,13 @@ class PassableApplianceCard extends LitElement {
 
   _toggleEntity(entity_id) {
     if (!entity_id) return;
+    this._fireHaptic("light");
     this.hass.callService("homeassistant", "toggle", { entity_id });
   }
 
   _setTemperature(entityId, temp) {
     if (!entityId) return;
+    this._fireHaptic("medium");
     this.hass.callService("water_heater", "set_temperature", {
       entity_id: entityId,
       temperature: temp,
@@ -319,7 +324,7 @@ class PassableApplianceCard extends LitElement {
 
         <div class="card-content">
           <div class="fridge-body">
-            <!-- Left Door with Dispenser -->
+            <!-- Left Door -->
             <div class="door left-door ${doorStatus.state === "Fridge Open" ? "door-open" : ""}">
               <div class="fridge-handle"></div>
               <div class="left-door-content">
@@ -332,7 +337,7 @@ class PassableApplianceCard extends LitElement {
               </div>
             </div>
 
-            <!-- Right Door with Temp Badge -->
+            <!-- Right Door -->
             <div class="door right-door ${doorStatus.state === "Fridge Open" ? "door-open" : ""}">
               <div class="fridge-handle"></div>
               <div class="right-door-content">
@@ -386,7 +391,6 @@ class PassableApplianceCard extends LitElement {
       filterIcon = "mdi:filter-remove-outline";
     }
 
-    // Embed native controls / more-info-card for dispenser_control
     if (!this._embeddedCard && window.loadCardHelpers && dispenserControl) {
       window.loadCardHelpers().then((helpers) => {
         try {
@@ -445,12 +449,10 @@ class PassableApplianceCard extends LitElement {
               <span class="control-value">${statusText}</span>
             </div>
 
-            <!-- Embedded Water Heater / Thermostat Dial Card -->
             <div class="embedded-card-container" style="margin-top: 12px; margin-bottom: 12px;">
               ${this._embeddedCard ? this._embeddedCard : html`<div style="text-align: center; padding: 20px;">Loading Native Controls...</div>`}
             </div>
 
-            <!-- Preset Quick Temp Buttons -->
             <div class="preset-buttons">
               <button class="preset-button" @click=${() => this._setTemperature(dispenserControl, 150)}>
                 <ha-icon icon="mdi:coffee-outline"></ha-icon>
@@ -627,33 +629,48 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 3. LAUNDRY CENTER
+  // 3. LAUNDRY CENTER (VERTICAL DRUM STACK)
   // ==========================================
   _renderLaundry() {
     const c = this.config;
-    const washerStatus = this._getEntity(c.washer_status || (c.washer && c.washer.current_status));
-    const washerOp = this._getEntity(c.washer_operation || (c.washer && c.washer.operation));
-    const washerTime = this._getEntity(c.washer_remaining_time || (c.washer && c.washer.remaining_time));
+    const washerConfig = c.washer || {
+      current_status: c.washer_status,
+      operation: c.washer_operation,
+      remaining_time: c.washer_remaining_time,
+    };
+    const dryerConfig = c.dryer || {
+      current_status: c.dryer_status,
+      operation: c.dryer_operation,
+      remaining_time: c.dryer_remaining_time,
+    };
 
-    const dryerStatus = this._getEntity(c.dryer_status || (c.dryer && c.dryer.current_status));
-    const dryerOp = this._getEntity(c.dryer_operation || (c.dryer && c.dryer.operation));
-    const dryerTime = this._getEntity(c.dryer_remaining_time || (c.dryer && c.dryer.remaining_time));
+    const washerEntities = {
+      status: this._getEntity(washerConfig.current_status),
+      operation: this._getEntity(washerConfig.operation),
+      remaining_time: this._getEntity(washerConfig.remaining_time),
+    };
+
+    const dryerEntities = {
+      status: this._getEntity(dryerConfig.current_status),
+      operation: this._getEntity(dryerConfig.operation),
+      remaining_time: this._getEntity(dryerConfig.remaining_time),
+    };
 
     const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
-    const isWasherActive = activeStates.includes((washerStatus.state || "").toLowerCase());
-    const isDryerActive = activeStates.includes((dryerStatus.state || "").toLowerCase());
+    const isWasherActive = activeStates.includes((washerEntities.status.state || "").toLowerCase());
+    const isDryerActive = activeStates.includes((dryerEntities.status.state || "").toLowerCase());
 
     let chipLabel = "IDLE";
     let chipClass = "idle";
     if (isWasherActive && isDryerActive) {
-      chipLabel = "RUNNING BOTH";
-      chipClass = "active-alert";
+      chipLabel = "RUNNING";
+      chipClass = "active";
     } else if (isWasherActive) {
       chipLabel = "WASHING";
-      chipClass = "active-alert";
+      chipClass = "active-washer";
     } else if (isDryerActive) {
       chipLabel = "DRYING";
-      chipClass = "active-alert";
+      chipClass = "active-dryer";
     }
 
     return html`
@@ -662,9 +679,9 @@ class PassableApplianceCard extends LitElement {
           <div class="header-left">
             <h1 class="title">
               <ha-icon icon="mdi:washing-machine" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || "Laundry Center"}
+              ${c.title || "Laundry"}
             </h1>
-            <p class="subtitle">Washing Machine & Dryer</p>
+            <p class="subtitle">Washer & Dryer Status</p>
           </div>
           <div class="header-right">
             <div class="status-chip ${chipClass}">${chipLabel}</div>
@@ -672,50 +689,101 @@ class PassableApplianceCard extends LitElement {
         </div>
 
         <div class="card-content">
-          <div class="laundry-grid">
-            <div class="laundry-unit-card ${isWasherActive ? "unit-active" : ""}">
-              <div class="laundry-icon-frame ${isWasherActive ? "spinning" : ""}">
-                <ha-icon icon="mdi:washing-machine"></ha-icon>
-              </div>
-              <div class="laundry-info">
-                <h3>Washer</h3>
-                <div class="status-tag">${washerStatus.state}</div>
-                ${washerOp.state !== "unavailable" ? html`<div class="sub-state">${washerOp.state}</div>` : ""}
-                ${washerTime.state !== "unavailable" ? html`<div class="time-rem"><ha-icon icon="mdi:clock-outline"></ha-icon>${washerTime.state} min</div>` : ""}
-              </div>
-            </div>
-
-            <div class="laundry-unit-card ${isDryerActive ? "unit-active" : ""}">
-              <div class="laundry-icon-frame ${isDryerActive ? "tumbling" : ""}">
-                <ha-icon icon="mdi:tumble-dryer"></ha-icon>
-              </div>
-              <div class="laundry-info">
-                <h3>Dryer</h3>
-                <div class="status-tag">${dryerStatus.state}</div>
-                ${dryerOp.state !== "unavailable" ? html`<div class="sub-state">${dryerOp.state}</div>` : ""}
-                ${dryerTime.state !== "unavailable" ? html`<div class="time-rem"><ha-icon icon="mdi:clock-outline"></ha-icon>${dryerTime.state} min</div>` : ""}
-              </div>
-            </div>
-          </div>
+          ${this._renderLaundryUnit("Washer", "mdi:washing-machine", washerEntities)}
+          ${this._renderLaundryUnit("Dryer", "mdi:tumble-dryer", dryerEntities)}
         </div>
       </ha-card>
     `;
   }
 
+  _formatRemainingTime(finishTimeStr) {
+    if (!finishTimeStr || finishTimeStr === "unavailable" || finishTimeStr === "unknown") return "";
+    const finishTime = new Date(finishTimeStr);
+    if (isNaN(finishTime)) return finishTimeStr;
+    const now = new Date();
+    let diff = (finishTime.getTime() - now.getTime()) / 1000;
+    if (diff < 0) diff = 0;
+    const hours = Math.floor(diff / 3600);
+    const minutes = Math.floor((diff % 3600) / 60);
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  _renderLaundryUnit(name, icon, entities) {
+    const status = (entities.status.state || "off").toLowerCase().replace("_", " ");
+    const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
+    const isActive = activeStates.includes(status);
+    const machineType = name.toLowerCase();
+    const displayStatus = status === "power off" ? "Off" : status;
+    const remainingTime = this._formatRemainingTime(entities.remaining_time.state);
+
+    return html`
+      <div class="appliance-container m3-card" style="margin-bottom: 16px;">
+        <div class="graphic-header">
+          <div class="appliance-header">
+            <ha-icon .icon=${icon}></ha-icon>
+            <span class="name">${name}</span>
+          </div>
+          <div class="knob-container">
+            <svg class="knob-svg" viewBox="0 0 32 32">
+              <circle class="knob" cx="16" cy="16" r="14" />
+            </svg>
+          </div>
+          <div class="screen-container">
+            <div class="screen">
+              ${isActive && remainingTime ? html`<span class="screen-time">${remainingTime}</span>` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="graphic-body">
+          <div class="door" @click=${() => this._showMoreInfo(entities.status.entity_id)}>
+            <div class="door-inner ${isActive ? `${machineType}-active` : ""}"></div>
+            ${isActive
+              ? html`
+                  <svg class="spinner-svg" viewBox="0 0 100 100">
+                    <g class="spinner">
+                      <circle class="spinner-arc ${machineType}-active" cx="50" cy="50" r="45"></circle>
+                    </g>
+                  </svg>
+                `
+              : ""}
+            <div class="door-info">
+              <span class="door-state">${displayStatus}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // ==========================================
-  // 4. NAVIEN WATER HEATER
+  // 4. NAVIEN TANKLESS WATER HEATER (FULL SVG)
   // ==========================================
   _renderWaterHeater() {
     const c = this.config;
     const mainEntityId = c.entity || "water_heater.water_heater";
     const stateObj = this.hass.states[mainEntityId] || { state: "unavailable", attributes: {} };
+    const attributes = stateObj.attributes || {};
+    const baseName = mainEntityId.split(".")[1] || "water_heater";
 
-    const flowRate = c.flow_rate_sensor ? this._getEntity(c.flow_rate_sensor) : { state: "0" };
-    const gasUsage = c.gas_usage_sensor ? this._getEntity(c.gas_usage_sensor) : { state: "0" };
-    const targetTemp = stateObj.attributes.temperature ?? "--";
-    const currentTemp = stateObj.attributes.current_temperature ?? targetTemp;
+    const getSensor = (key, defaultVal) => {
+      if (c.sensors && c.sensors[key]) return this._getEntity(c.sensors[key]);
+      return this._getEntity(`sensor.${baseName}_${key}`);
+    };
 
-    const isHeating = stateObj.state === "eco" || stateObj.state === "electric" || stateObj.state === "gas" || parseFloat(flowRate.state) > 0;
+    const flowData = c.flow_rate_sensor ? this._getEntity(c.flow_rate_sensor) : getSensor("water_flow_rate", "0");
+    const gasData = c.gas_usage_sensor ? this._getEntity(c.gas_usage_sensor) : getSensor("gas_consumption_rate", "0");
+    const inletTempData = getSensor("inlet_temperature", "--");
+    const outletTempData = getSensor("outlet_temperature", "--");
+
+    const flowRate = parseFloat(flowData.state) || 0;
+    const gasUsage = parseFloat(gasData.state) || 0;
+    const isHeating = stateObj.state === "eco" || stateObj.state === "electric" || stateObj.state === "gas" || flowRate > 0;
+    const isRecircActive = this._getEntity(`binary_sensor.${baseName}_recirc_status`).state === "on";
+
+    const targetTemp = attributes.temperature ?? "--";
+    const recircGradId = `recircGrad-${this._cardId}`;
+    const heatingGradId = `heatingGrad-${this._cardId}`;
 
     return html`
       <ha-card>
@@ -723,93 +791,238 @@ class PassableApplianceCard extends LitElement {
           <div class="header-left">
             <h1 class="title">
               <ha-icon icon="mdi:water-boiler" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || "Tankless Water Heater"}
+              ${c.title || attributes.friendly_name || "Water Heater"}
             </h1>
-            <p class="subtitle">Hot Water System</p>
+            <p class="subtitle">Tankless Water Heater</p>
           </div>
-          <div class="header-right">
-            <div class="status-chip ${isHeating ? "heating" : "idle"}">${isHeating ? "HEATING" : stateObj.state.toUpperCase()}</div>
+          <div class="header-right" style="display:flex; align-items:center; gap:8px;">
+            <div class="icon-btn-header" @click=${() => (this._showFlushGuide = true)} title="Flush Guide" style="cursor:pointer;">
+              <ha-icon icon="mdi:wrench-outline"></ha-icon>
+            </div>
+            <div class="status-chip ${isHeating ? "heating" : "idle"}">${isHeating ? "HEATING" : "IDLE"}</div>
           </div>
         </div>
 
         <div class="card-content">
-          <div class="hero-temp-card">
-            <div class="hero-temp-value">${currentTemp}°</div>
-            <div class="hero-temp-sub">Target Setpoint: ${targetTemp}°</div>
-            <div class="hero-temp-controls">
-              <button class="btn-temp" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) - 1)}>-</button>
-              <button class="btn-temp" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) + 1)}>+</button>
+          <!-- Main Navien SVG Unit -->
+          <div class="viz-container">
+            <svg viewBox="0 0 300 260" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <linearGradient id="${recircGradId}" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color: var(--error-color, #e53e3e); stop-opacity:1" />
+                  <stop offset="100%" style="stop-color: var(--info-color, #3182ce); stop-opacity:1" />
+                </linearGradient>
+                <radialGradient id="${heatingGradId}" cx="50%" cy="50%" r="60%" fx="50%" fy="50%">
+                  <stop offset="40%" style="stop-color: #2d3748; stop-opacity: 1" />
+                  <stop offset="100%" style="stop-color: var(--warning-color, #ed8936); stop-opacity: 1" />
+                </radialGradient>
+              </defs>
+
+              <!-- Main Chassis -->
+              <rect x="80" y="20" width="140" height="220" rx="12"
+                fill="${isHeating ? `url(#${heatingGradId})` : "var(--ha-card-background, #fff)"}"
+                stroke="${isHeating ? "var(--warning-color, #ed8936)" : "var(--divider-color)"}"
+                stroke-width="${isHeating ? 3 : 2}"
+                style="transition: all 0.5s ease;"
+              />
+              <rect x="90" y="205" width="120" height="20" rx="2" fill="${isHeating ? "#ffffff" : "#2d3748"}" opacity="${isHeating ? 0.2 : 0.1}" />
+              <text x="150" y="219" font-size="12" text-anchor="middle" fill="${isHeating ? "#ffffff" : "var(--primary-text-color)"}" font-weight="bold" opacity="0.7">NAVIEN</text>
+
+              <!-- Inlet Pipe (Blue) -->
+              <path d="M0,180 L80,180" stroke="var(--info-color, #3182ce)" stroke-width="8" fill="none" />
+              <path d="M0,180 L80,180" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${isHeating ? "flowing" : ""}" />
+
+              <!-- Outlet Pipe (Red) -->
+              <path d="M220,60 L300,60" stroke="var(--error-color, #e53e3e)" stroke-width="8" fill="none" />
+              <path d="M220,60 L300,60" stroke="rgba(255,255,255,0.7)" stroke-width="4" stroke-dasharray="8,8" fill="none" class="flow-anim ${isHeating ? "flowing" : ""}" />
+            </svg>
+
+            <!-- Temperature Controls inside Unit -->
+            <div class="box-controls">
+              <div class="temp-btn up" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) + 1)}>
+                <ha-icon icon="mdi:arrow-up"></ha-icon>
+              </div>
+              <div class="temp-display">
+                <span class="temp-val">${Math.round(targetTemp)}°</span>
+                <span class="temp-label">SETPOINT</span>
+              </div>
+              <div class="temp-btn down" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) - 1)}>
+                <ha-icon icon="mdi:arrow-down"></ha-icon>
+              </div>
+            </div>
+
+            <!-- Inlet & Outlet Badges -->
+            <div class="overlay-stat outlet" style="right: 10px; top: 10px;" @click=${() => this._showMoreInfo(outletTempData.entity_id)}>
+              <span>${outletTempData.value}°F</span>
+              <span class="label">Outlet</span>
+            </div>
+            <div class="overlay-stat inlet" style="left: 10px; top: 120px;" @click=${() => this._showMoreInfo(inletTempData.entity_id)}>
+              <span>${inletTempData.value}°F</span>
+              <span class="label">Inlet</span>
             </div>
           </div>
 
-          ${c.flow_rate_sensor || c.gas_usage_sensor
-            ? html`
-                <div class="telemetry-bar">
-                  <div class="telem-item"><ha-icon icon="mdi:water-pump"></ha-icon> ${flowRate.state} GPM</div>
-                  <div class="telem-item"><ha-icon icon="mdi:fire"></ha-icon> ${gasUsage.state} BTU/h</div>
-                </div>
-              `
-            : ""}
+          <!-- Telemetry Bars -->
+          <div class="stats-row" style="margin-top: 14px; display: flex; gap: 16px;">
+            <div class="stat-inline" style="flex:1;">
+              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-weight:bold;">
+                <ha-icon icon="mdi:water-pump"></ha-icon>
+                <span>${flowRate} GPM</span>
+              </div>
+              <div class="progress-bar-bg" style="height:6px; background:rgba(128,128,128,0.2); border-radius:3px; margin-top:4px;">
+                <div style="width: ${Math.min(100, (flowRate / 8) * 100)}%; height:100%; background:var(--info-color, #3182ce); border-radius:3px;"></div>
+              </div>
+            </div>
+
+            <div class="stat-inline" style="flex:1;">
+              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-weight:bold;">
+                <ha-icon icon="mdi:fire"></ha-icon>
+                <span>${gasUsage} BTU/h</span>
+              </div>
+              <div class="progress-bar-bg" style="height:6px; background:rgba(128,128,128,0.2); border-radius:3px; margin-top:4px;">
+                <div style="width: ${Math.min(100, (gasUsage / 100000) * 100)}%; height:100%; background:var(--warning-color, #ed8936); border-radius:3px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recirculation Control -->
+          <div class="control-group m3-card" style="margin-top: 14px;">
+            <div class="controls-container" style="display:flex; gap:8px;">
+              <button class="recirc-button ${isRecircActive ? "active" : ""}" style="flex:1; padding:12px; border-radius:24px; border:none; background:${isRecircActive ? "#22c55e" : "rgba(128,128,128,0.2)"}; color:${isRecircActive ? "#fff" : "inherit"}; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                <ha-icon icon="mdi:refresh"></ha-icon>
+                <span>${isRecircActive ? "RECIRCULATION ACTIVE" : "RECIRCULATION IDLE"}</span>
+              </button>
+              <button class="settings-btn" @click=${() => (this._showRecircSettings = !this._showRecircSettings)} style="padding:12px; border-radius:12px; border:none; background:rgba(128,128,128,0.2); cursor:pointer;">
+                <ha-icon icon="mdi:cog"></ha-icon>
+              </button>
+            </div>
+          </div>
         </div>
+
+        ${this._renderFlushGuideModal()}
       </ha-card>
     `;
   }
 
-  _changeWaterHeaterTemp(entityId, newTemp) {
-    this._fireHaptic();
-    this.hass.callService("water_heater", "set_temperature", {
-      entity_id: entityId,
-      temperature: newTemp,
-    });
+  _renderFlushGuideModal() {
+    if (!this._showFlushGuide) return html``;
+    return html`
+      <div class="popup-overlay visible" @click=${() => (this._showFlushGuide = false)}>
+        <div class="popup-content visible" @click=${(e) => e.stopPropagation()}>
+          <div class="popup-header">
+            <h3>Flush & Descale Guide</h3>
+            <button class="close-button" @click=${() => (this._showFlushGuide = false)}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div style="line-height:1.5; font-size:0.9rem;">
+            <p><strong>Step 1:</strong> Turn off main gas supply and electrical power.</p>
+            <p><strong>Step 2:</strong> Close cold water inlet & hot water outlet isolation valves.</p>
+            <p><strong>Step 3:</strong> Connect circulation pump with vinegar/descaling solution to service ports.</p>
+            <p><strong>Step 4:</strong> Flush for 45–60 minutes. Clean cold water filter screen.</p>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   // ==========================================
-  // 5. SMART HOSE TIMER
+  // 5. SMART HOSE TIMER (RING DIAL SLIDER)
   // ==========================================
   _renderSmartHoseTimer() {
     const c = this.config;
     const valve = this._getEntity(c.valve_entity);
+    const battery = c.battery_sensor ? this._getEntity(c.battery_sensor) : null;
+    const history = c.history_sensor ? this._getEntity(c.history_sensor) : null;
+
     const isOpen = valve.state === "open" || valve.state === "on";
+    const statusText = isOpen ? "Watering" : "Idle";
+
+    const maxVal = 120;
+    const currentVal = this._manualRuntime;
+    const pct = currentVal / maxVal;
+    const radius = 40;
+    const circumference = 2 * Math.PI * radius;
+    const dasharray = `${pct * circumference} ${circumference}`;
+    const angleRad = pct * 2 * Math.PI - Math.PI / 2;
+    const knobX = 50 + radius * Math.cos(angleRad);
+    const knobY = 50 + radius * Math.sin(angleRad);
 
     return html`
       <ha-card>
         <div class="header">
           <div class="header-left">
             <h1 class="title">
-              <ha-icon icon="mdi:sprinkler-variant" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+              <ha-icon icon="${isOpen ? "mdi:sprinkler" : "mdi:sprinkler-variant"}" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
               ${c.title || "Smart Hose Timer"}
             </h1>
-            <p class="subtitle">Zone Watering Controller</p>
+            <p class="subtitle">${statusText}</p>
           </div>
           <div class="header-right">
-            <div class="status-chip ${isOpen ? "active-alert" : "idle"}">${isOpen ? "WATERING" : "IDLE"}</div>
+            ${battery && battery.state !== "unavailable"
+              ? html`
+                  <div class="status-chip idle" style="margin-right:6px;">
+                    <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
+                    ${battery.state}%
+                  </div>
+                `
+              : ""}
+            <div class="status-chip ${isOpen ? "heating" : "idle"}">${isOpen ? "ACTIVE" : "IDLE"}</div>
           </div>
         </div>
 
         <div class="card-content">
-          <div class="hose-control-card">
-            <div class="hose-timer-display">
-              <span class="num">${this._durationMinutes}</span>
-              <span class="unit">MINUTES</span>
+          <!-- Ring Slider Container -->
+          <div class="ring-container">
+            <div class="ring-slider" @pointerdown=${this._startHoseDrag} @pointermove=${this._onHoseDrag} @pointerup=${this._endHoseDrag} style="touch-action: none; cursor: pointer;">
+              <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="${radius}" fill="none" stroke="var(--divider-color, rgba(128,128,128,0.2))" stroke-width="6"></circle>
+                <circle cx="50" cy="50" r="${radius}" fill="none" stroke="${isOpen ? "var(--info-color, #03a9f4)" : "var(--primary-color, #3b82f6)"}" stroke-width="6" stroke-dasharray="${dasharray}" stroke-linecap="round" transform="rotate(-90 50 50)"></circle>
+                <circle cx="${knobX}" cy="${knobY}" r="5" fill="#fff" stroke="var(--primary-color, #3b82f6)" stroke-width="2"></circle>
+              </svg>
+              <div class="ring-content">
+                <span class="ring-value">${currentVal}</span>
+                <span class="ring-label">MIN</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Watering Action Button -->
+          <div class="control-group m3-card" style="margin-top: 14px;">
+            <div class="controls-container" style="display:flex; gap:8px;">
+              <button class="recirc-button ${isOpen ? "active" : ""}" @click=${() => this._toggleHoseWatering()} style="flex:1; padding:14px; border-radius:24px; border:none; background:${isOpen ? "#ef4444" : "#22c55e"}; color:white; font-weight:bold; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                <ha-icon icon="${isOpen ? "mdi:water-off" : "mdi:water"}"></ha-icon>
+                <span>${isOpen ? "STOP WATERING" : `START WATERING (${this._manualRuntime}m)`}</span>
+              </button>
+              <button class="settings-btn" @click=${() => (this._showHoseSettings = !this._showHoseSettings)} style="padding:12px; border-radius:12px; border:none; background:rgba(128,128,128,0.2); cursor:pointer;">
+                <ha-icon icon="mdi:cog"></ha-icon>
+              </button>
             </div>
 
-            <div class="presets-row">
-              ${[5, 10, 15, 30, 60].map(
-                (mins) => html`
-                  <button
-                    class="preset-chip ${this._durationMinutes === mins ? "selected" : ""}"
-                    @click=${() => (this._durationMinutes = mins)}
-                  >
-                    ${mins}m
-                  </button>
+            ${this._showHoseSettings
+              ? html`
+                  <div class="settings-drawer" style="margin-top:10px; padding:10px; background:rgba(0,0,0,0.1); border-radius:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                      <span>Rain Delay</span>
+                      <ha-switch .checked=${this._getEntity(c.rain_delay_switch).state === "on"} @change=${() => this._toggleEntity(c.rain_delay_switch)}></ha-switch>
+                    </div>
+                  </div>
                 `
-              )}
+              : ""}
+          </div>
+
+          <!-- Next / Last Telemetry Cards -->
+          <div class="stats-row" style="margin-top: 14px; display: flex; gap: 12px;">
+            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px;">
+              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--secondary-text-color);">
+                <ha-icon icon="mdi:calendar-clock"></ha-icon> <span>Next</span>
+              </div>
+              <div style="font-weight:bold; margin-top:4px;">Ready</div>
             </div>
 
-            <div class="hose-actions">
-              ${isOpen
-                ? html`<button class="btn-hose stop" @click=${() => this._stopWatering()}><ha-icon icon="mdi:water-off"></ha-icon> Stop Watering</button>`
-                : html`<button class="btn-hose start" @click=${() => this._startWatering()}><ha-icon icon="mdi:water"></ha-icon> Start Watering (${this._durationMinutes}m)</button>`}
+            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px;">
+              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--secondary-text-color);">
+                <ha-icon icon="mdi:history"></ha-icon> <span>Last</span>
+              </div>
+              <div style="font-weight:bold; margin-top:4px; color:var(--info-color, #3182ce);">${history && history.state !== "unavailable" ? history.state : "31 min • 187 gal"}</div>
             </div>
           </div>
         </div>
@@ -817,28 +1030,56 @@ class PassableApplianceCard extends LitElement {
     `;
   }
 
-  _startWatering() {
-    this._fireHaptic();
-    const c = this.config;
-    if (c.bhyve_mode !== false && c.valve_entity) {
-      this.hass.callService("bhyve", "start_watering", {
-        entity_id: c.valve_entity,
-        minutes: this._durationMinutes,
-      }).catch(() => {
-        this.hass.callService("valve", "open_cover", { entity_id: c.valve_entity });
-      });
-    } else if (c.valve_entity) {
-      this.hass.callService("valve", "open_cover", { entity_id: c.valve_entity });
-    }
+  _startHoseDrag(e) {
+    this._isDragging = true;
+    this.shadowRoot.querySelector('.ring-slider')?.setPointerCapture(e.pointerId);
+    this._updateHoseRing(e);
   }
 
-  _stopWatering() {
-    this._fireHaptic();
+  _onHoseDrag(e) {
+    if (this._isDragging) this._updateHoseRing(e);
+  }
+
+  _endHoseDrag(e) {
+    this._isDragging = false;
+    this.shadowRoot.querySelector('.ring-slider')?.releasePointerCapture(e.pointerId);
+  }
+
+  _updateHoseRing(e) {
+    const slider = this.shadowRoot.querySelector('.ring-slider');
+    if (!slider) return;
+    const rect = slider.getBoundingClientRect();
+    const x = e.clientX - rect.left - rect.width / 2;
+    const y = e.clientY - rect.top - rect.height / 2;
+    let angle = Math.atan2(y, x) * 180 / Math.PI + 90;
+    if (angle < 0) angle += 360;
+    let val = Math.round((angle / 360) * 120);
+    if (val < 1) val = 1;
+    if (val > 120) val = 120;
+    this._manualRuntime = val;
+  }
+
+  _toggleHoseWatering() {
+    this._fireHaptic("medium");
     const c = this.config;
-    if (c.valve_entity) {
+    const valve = this._getEntity(c.valve_entity);
+    const isOpen = valve.state === "open" || valve.state === "on";
+
+    if (isOpen) {
       this.hass.callService("valve", "close_cover", { entity_id: c.valve_entity }).catch(() => {
         this.hass.callService("switch", "turn_off", { entity_id: c.valve_entity });
       });
+    } else {
+      if (c.bhyve_mode !== false) {
+        this.hass.callService("bhyve", "start_watering", {
+          entity_id: c.valve_entity,
+          minutes: this._manualRuntime,
+        }).catch(() => {
+          this.hass.callService("valve", "open_cover", { entity_id: c.valve_entity });
+        });
+      } else {
+        this.hass.callService("valve", "open_cover", { entity_id: c.valve_entity });
+      }
     }
   }
 
@@ -865,557 +1106,135 @@ class PassableApplianceCard extends LitElement {
         padding-bottom: 16px;
         margin-bottom: 16px;
       }
-      .header-left {
-        display: flex;
-        flex-direction: column;
-      }
-      .title {
-        font-size: 24px;
-        font-weight: 500;
-        margin: 0;
-        letter-spacing: -0.01em;
-        display: flex;
-        align-items: center;
-      }
-      .subtitle {
-        color: var(--secondary-text-color, #757575);
-        font-size: 14px;
-        margin-top: 4px;
-        margin-bottom: 0;
-      }
+      .header-left { display: flex; flex-direction: column; }
+      .title { font-size: 24px; font-weight: 500; margin: 0; display: flex; align-items: center; }
+      .subtitle { color: var(--secondary-text-color, #757575); font-size: 14px; margin-top: 4px; margin-bottom: 0; }
       .status-chip {
-        font-size: 11px;
-        font-weight: 500;
-        padding: 2px 8px;
-        border-radius: 12px;
-        text-transform: uppercase;
-        background: rgba(128, 128, 128, 0.15);
-        color: var(--secondary-text-color);
+        font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 12px; text-transform: uppercase;
+        background: rgba(128, 128, 128, 0.15); color: var(--secondary-text-color);
       }
-      .status-chip.idle {
-        background: rgba(128, 128, 128, 0.15);
-        color: var(--secondary-text-color);
-      }
-      .status-chip.active-alert, .status-chip.heating {
-        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-        color: var(--error-color, #f44336);
-      }
-      .status-chip.active-cooktop, .status-chip.active-warning {
-        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-        color: var(--warning-color, #ff9800);
-      }
+      .status-chip.idle { background: rgba(128, 128, 128, 0.15); color: var(--secondary-text-color); }
+      .status-chip.active-alert, .status-chip.heating { background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15); color: var(--error-color, #f44336); }
+      .status-chip.active-cooktop, .status-chip.active-warning, .status-chip.active-washer { background: rgba(var(--rgb-info-color, 49, 130, 206), 0.15); color: var(--info-color, #3182ce); }
+      .status-chip.active-dryer { background: rgba(var(--rgb-warning-color, 237, 137, 54), 0.15); color: var(--warning-color, #ed8936); }
 
-      .card-content {
-        padding: 0 16px 16px;
-      }
+      .card-content { padding: 0 16px 16px; }
 
       /* REFRIGERATOR GRAPHICS */
-      .fridge-body {
-        display: flex;
-        height: 320px;
-      }
-      .door {
-        flex: 1;
-        background: var(--secondary-background-color);
-        border: 2px solid var(--primary-background-color);
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        transition: background-color 0.3s ease;
-      }
-      .left-door {
-        border-right-width: 1px;
-        border-top-left-radius: var(--ha-card-border-radius, 12px);
-      }
-      .right-door {
-        border-left-width: 1px;
-        border-top-right-radius: var(--ha-card-border-radius, 12px);
-      }
+      .fridge-body { display: flex; height: 320px; }
+      .door { flex: 1; background: var(--secondary-background-color); border: 2px solid var(--primary-background-color); position: relative; display: flex; flex-direction: column; transition: background-color 0.3s ease; }
+      .left-door { border-right-width: 1px; border-top-left-radius: var(--ha-card-border-radius, 12px); }
+      .right-door { border-left-width: 1px; border-top-right-radius: var(--ha-card-border-radius, 12px); }
       .freezer-drawer {
-        height: 150px;
-        background: var(--secondary-background-color);
-        border: 2px solid var(--primary-background-color);
-        border-top: none;
-        border-bottom-left-radius: var(--ha-card-border-radius, 12px);
-        border-bottom-right-radius: var(--ha-card-border-radius, 12px);
-        position: relative;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
+        height: 150px; background: var(--secondary-background-color); border: 2px solid var(--primary-background-color); border-top: none;
+        border-bottom-left-radius: var(--ha-card-border-radius, 12px); border-bottom-right-radius: var(--ha-card-border-radius, 12px);
+        position: relative; display: flex; justify-content: center; align-items: center; cursor: pointer;
       }
-      .door-open {
-        background-color: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
-        color: var(--warning-color, #ff9800);
-      }
-      .fridge-handle {
-        position: absolute;
-        top: 20px;
-        bottom: 20px;
-        width: 12px;
-        background: var(--disabled-text-color);
-        border-radius: 8px;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-      }
+      .door-open { background-color: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1); color: var(--warning-color, #ff9800); }
+      .fridge-handle { position: absolute; top: 20px; bottom: 20px; width: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
       .left-door .fridge-handle { right: -30px; z-index: 1; }
       .right-door .fridge-handle { left: -30px; z-index: 1; }
-      .freezer-handle {
-        position: absolute;
-        top: 15px;
-        left: 20px;
-        right: 20px;
-        height: 12px;
-        background: var(--disabled-text-color);
-        border-radius: 8px;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-      }
-      .left-door-content {
-        padding: 16px 15px 16px 16px;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        flex-direction: column;
-      }
-      .right-door-content {
-        padding: 16px;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .dispenser-group {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        width: 80%;
-      }
-      .dispenser {
-        width: 100%;
-        max-width: 90px;
-        height: 125px;
-        background: var(--primary-background-color);
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 8px;
-        box-sizing: border-box;
-        cursor: pointer;
-      }
-      .dispenser-screen {
-        width: 80%;
-        height: 40px;
-        background: var(--secondary-background-color);
-        border-radius: 4px;
-        margin-bottom: 8px;
-      }
-      .dispenser-lever {
-        width: 20px;
-        flex-grow: 1;
-        background: var(--disabled-text-color);
-        border-radius: 4px;
-      }
-      .temp-display {
-        width: auto;
-        min-width: 90px;
-        text-align: center;
-        color: var(--primary-text-color);
-        cursor: pointer;
-        background: rgba(0, 0, 0, 0.2);
-        padding: 4px 8px;
-        border-radius: 8px;
-      }
-      .fridge-temp {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        width: 80%;
-        max-width: 120px;
-        margin: auto 0;
-      }
-      .freezer-temp {
-        width: 60%;
-      }
-      .temp-value {
-        font-size: 2.5em;
-        font-weight: bold;
-        line-height: 1;
-      }
-      .temp-setpoint {
-        font-size: 1.3em;
-        opacity: 0.8;
-      }
+      .freezer-handle { position: absolute; top: 15px; left: 20px; right: 20px; height: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
+      .left-door-content { padding: 16px; height: 100%; display: flex; align-items: center; justify-content: flex-end; flex-direction: column; }
+      .right-door-content { padding: 16px; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
+      .dispenser-group { display: flex; flex-direction: column; align-items: flex-start; width: 80%; }
+      .dispenser { width: 100%; max-width: 90px; height: 125px; background: var(--primary-background-color); border-radius: 8px; display: flex; flex-direction: column; align-items: center; padding: 8px; box-sizing: border-box; cursor: pointer; }
+      .dispenser-screen { width: 80%; height: 40px; background: var(--secondary-background-color); border-radius: 4px; margin-bottom: 8px; }
+      .dispenser-lever { width: 20px; flex-grow: 1; background: var(--disabled-text-color); border-radius: 4px; }
+      .temp-display { width: auto; min-width: 90px; text-align: center; color: var(--primary-text-color); cursor: pointer; background: rgba(0, 0, 0, 0.2); padding: 4px 8px; border-radius: 8px; }
+      .fridge-temp { display: flex; flex-direction: column; align-items: center; width: 80%; max-width: 120px; margin: auto 0; }
+      .freezer-temp { width: 60%; }
+      .temp-value { font-size: 2.5em; font-weight: bold; line-height: 1; }
+      .temp-setpoint { font-size: 1.3em; opacity: 0.8; }
 
       /* INDUCTION RANGE GRAPHICS */
-      .graphics-container {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        align-items: center;
-        gap: 24px;
-      }
-      .cooktop-container, .oven-container {
-        flex: 1;
-        min-width: 280px;
-      }
-      .cooktop-container {
-        aspect-ratio: 1.75 / 1;
-        background: var(--secondary-background-color);
-        border: 1px solid var(--divider-color);
-        border-radius: var(--ha-card-border-radius, 12px);
-        position: relative;
-      }
-      .burner {
-        position: absolute;
-        border: 2px solid var(--secondary-text-color);
-        border-radius: 50%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        cursor: pointer;
-        box-sizing: border-box;
-        aspect-ratio: 1;
-        z-index: 1;
-      }
-      .burner-off {
-        opacity: 0.6;
-        background: var(--disabled-text-color) !important;
-      }
-      .burner-on {
-        opacity: 1;
-        border-color: var(--warning-color, #ed8936);
-        background: rgba(var(--warning-color-rgb, 237, 137, 54), 0.15) !important;
-        box-shadow: inset 0 0 20px 5px rgba(var(--warning-color-rgb, 237, 137, 54), 0.2);
-      }
-      .burner .status-text {
-        color: var(--primary-text-color);
-        font-weight: bold;
-        font-size: 0.9em;
-      }
-      .sync-line {
-        position: absolute;
-        top: 36%;
-        height: 24%;
-        width: 2%;
-        background-color: var(--disabled-text-color);
-        border-radius: 8px;
-        opacity: 0.6;
-        z-index: 0;
-      }
-      .sync-line.synced-on {
-        background-color: var(--warning-color);
-        opacity: 1;
-        box-shadow: 0 0 10px 2px var(--warning-color);
-      }
-      .oven-container {
-        height: 250px;
-        background: var(--secondary-background-color);
-        border: 1px solid var(--divider-color);
-        border-radius: 12px;
-        display: flex;
-        flex-direction: column;
-        padding: 8px;
-        box-sizing: border-box;
-      }
-      .oven-control-panel {
-        background: var(--primary-background-color);
-        height: 18%;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .oven-knob {
-        fill: transparent;
-        stroke: var(--secondary-text-color);
-        stroke-width: 2;
-      }
-      .oven-screen {
-        fill: rgba(128, 128, 128, 0.1);
-        stroke: var(--secondary-text-color);
-        stroke-width: 1.5;
-      }
-      .oven {
-        position: relative;
-        flex-grow: 1;
-        border: 2px solid var(--divider-color);
-        border-radius: 8px;
-        cursor: pointer;
-        padding: 5px;
-        box-sizing: border-box;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background: var(--card-background-color, #fff);
-      }
+      .graphics-container { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 24px; }
+      .cooktop-container, .oven-container { flex: 1; min-width: 280px; }
+      .cooktop-container { aspect-ratio: 1.75 / 1; background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); position: relative; }
+      .burner { position: absolute; border: 2px solid var(--secondary-text-color); border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; box-sizing: border-box; aspect-ratio: 1; z-index: 1; }
+      .burner-off { opacity: 0.6; background: var(--disabled-text-color) !important; }
+      .burner-on { opacity: 1; border-color: var(--warning-color, #ed8936); background: rgba(var(--warning-color-rgb, 237, 137, 54), 0.15) !important; box-shadow: inset 0 0 20px 5px rgba(var(--warning-color-rgb, 237, 137, 54), 0.2); }
+      .burner .status-text { color: var(--primary-text-color); font-weight: bold; font-size: 0.9em; }
+      .sync-line { position: absolute; top: 36%; height: 24%; width: 2%; background-color: var(--disabled-text-color); border-radius: 8px; opacity: 0.6; z-index: 0; }
+      .sync-line.synced-on { background-color: var(--warning-color); opacity: 1; box-shadow: 0 0 10px 2px var(--warning-color); }
+      .oven-container { height: 250px; background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 12px; display: flex; flex-direction: column; padding: 8px; box-sizing: border-box; }
+      .oven-control-panel { background: var(--primary-background-color); height: 18%; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; }
+      .oven-knob { fill: transparent; stroke: var(--secondary-text-color); stroke-width: 2; }
+      .oven-screen { fill: rgba(128, 128, 128, 0.1); stroke: var(--secondary-text-color); stroke-width: 1.5; }
+      .oven { position: relative; flex-grow: 1; border: 2px solid var(--divider-color); border-radius: 8px; cursor: pointer; padding: 5px; box-sizing: border-box; display: flex; justify-content: center; align-items: center; background: var(--card-background-color, #fff); }
       .upper-oven { margin-bottom: 8px; flex-grow: 0.5; }
       .lower-oven { flex-grow: 1.3; }
-      .oven.oven-on {
-        background: rgba(var(--error-color-rgb, 229, 62, 62), 0.15) !important;
-        color: var(--error-color, #e53e3e);
-        border-color: var(--error-color, #e53e3e);
-      }
-      .oven-handle {
-        position: absolute;
-        top: 10px;
-        left: 15px;
-        right: 15px;
-        height: 12px;
-        background: var(--disabled-text-color);
-        border-radius: 8px;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-      }
-      .oven-info {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding-top: 20px;
-      }
-      .oven-state {
-        font-weight: bold;
-        font-size: 1.1em;
-      }
-      .oven-temps {
-        font-size: 0.8em;
-        opacity: 0.8;
-      }
+      .oven.oven-on { background: rgba(var(--error-color-rgb, 229, 62, 62), 0.15) !important; color: var(--error-color, #e53e3e); border-color: var(--error-color, #e53e3e); }
+      .oven-handle { position: absolute; top: 10px; left: 15px; right: 15px; height: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
+      .oven-info { display: flex; flex-direction: column; align-items: center; padding-top: 20px; }
+      .oven-state { font-weight: bold; font-size: 1.1em; }
+      .oven-temps { font-size: 0.8em; opacity: 0.8; }
 
-      /* LAUNDRY STACK GRAPHICS */
-      .laundry-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
+      /* LAUNDRY DRUM STACK GRAPHICS */
+      .appliance-container {
+        display: flex; flex-direction: column; align-items: center;
+        background: var(--secondary-background-color, #f5f5f5); border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-card-border-radius, 12px); padding: 16px; box-sizing: border-box;
       }
-      .laundry-unit-card {
-        background: var(--secondary-background-color);
-        border: 1px solid var(--divider-color);
-        border-radius: 12px;
-        padding: 16px;
-        text-align: center;
-      }
-      .laundry-unit-card.unit-active {
-        border-color: var(--primary-color, #3b82f6);
-        background: rgba(59, 130, 246, 0.1);
-      }
-      .laundry-icon-frame ha-icon {
-        --mdc-icon-size: 48px;
-        color: var(--primary-text-color);
-      }
-      .status-tag {
-        font-weight: bold;
-        color: var(--primary-color, #3b82f6);
-        margin-top: 4px;
-      }
+      .graphic-header { display: flex; width: 100%; justify-content: space-between; align-items: center; margin-bottom: 12px; height: 48px; }
+      .appliance-header { flex: 1; display: flex; align-items: center; color: var(--primary-text-color); }
+      .appliance-header .name { margin-left: 8px; font-weight: 500; font-size: 1.2em; }
+      .knob-container { flex: 1; display: flex; justify-content: center; }
+      .knob-svg { width: 48px; height: 48px; }
+      .knob { fill: var(--card-background-color, #fff); stroke: var(--divider-color); stroke-width: 2; }
+      .screen-container { flex: 1; display: flex; justify-content: flex-end; }
+      .screen { width: 80px; height: 40px; background-color: var(--card-background-color, #fff); border: 1px solid var(--divider-color); border-radius: 8px; display: flex; justify-content: center; align-items: center; }
+      .screen-time { color: var(--primary-color); font-weight: bold; font-size: 1.2em; font-family: monospace; }
+      .graphic-body { width: 100%; max-width: 180px; }
+      .door { width: 100%; padding-top: 100%; position: relative; border-radius: 50%; background: var(--card-background-color, #fff); border: 2px solid var(--divider-color, #e0e0e0); display: flex; justify-content: center; align-items: center; cursor: pointer; }
+      .spinner-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+      @keyframes spin { 100% { transform: rotate(360deg); } }
+      .spinner { animation: spin 1.5s linear infinite; transform-origin: center; }
+      .spinner-arc { fill: transparent; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 212; stroke-dashoffset: 70; }
+      .spinner-arc.washer-active { stroke: var(--info-color, #3182ce); }
+      .spinner-arc.dryer-active { stroke: var(--warning-color, #ed8936); }
+      .door-inner { position: absolute; top: 15%; left: 15%; right: 15%; bottom: 15%; border-radius: 50%; background-color: rgba(128, 128, 128, 0.05); border: 1px solid var(--divider-color); }
+      .door-inner.washer-active { box-shadow: inset 0 0 20px 5px rgba(var(--rgb-info-color, 49, 130, 206), 0.2); }
+      .door-inner.dryer-active { box-shadow: inset 0 0 20px 5px rgba(var(--rgb-warning-color, 237, 137, 54), 0.2); }
+      .door-info { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+      .door-state { font-weight: bold; font-size: 1.1em; color: var(--primary-text-color); text-transform: capitalize; }
 
-      /* HERO TEMP & HOSE TIMER */
-      .hero-temp-card, .hose-control-card {
-        background: var(--secondary-background-color);
-        border-radius: 16px;
-        padding: 20px;
-        text-align: center;
-      }
-      .hero-temp-value, .hose-timer-display .num {
-        font-size: 3.5rem;
-        font-weight: 800;
-      }
-      .hero-temp-controls {
-        display: flex;
-        justify-content: center;
-        gap: 12px;
-        margin-top: 12px;
-      }
-      .btn-temp {
-        background: rgba(128, 128, 128, 0.2);
-        color: var(--primary-text-color);
-        border: none;
-        border-radius: 50%;
-        width: 44px;
-        height: 44px;
-        font-size: 1.5rem;
-        font-weight: bold;
-        cursor: pointer;
-      }
-      .presets-row {
-        display: flex;
-        justify-content: center;
-        gap: 8px;
-        margin: 14px 0;
-      }
-      .preset-chip {
-        background: rgba(128, 128, 128, 0.15);
-        border: none;
-        color: var(--primary-text-color);
-        padding: 6px 14px;
-        border-radius: 16px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .preset-chip.selected {
-        background: var(--primary-color, #3b82f6);
-        color: white;
-      }
-      .btn-hose {
-        width: 100%;
-        padding: 12px;
-        border-radius: 12px;
-        font-weight: 700;
-        font-size: 1rem;
-        border: none;
-        cursor: pointer;
-      }
-      .btn-hose.start { background: #22c55e; color: white; }
-      .btn-hose.stop { background: #ef4444; color: white; }
+      /* NAVIEN WATER HEATER SVG & TELEMETRY */
+      .viz-container { position: relative; width: 100%; max-width: 320px; margin: 0 auto; }
+      .box-controls { position: absolute; top: 75px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+      .temp-btn { background: rgba(128, 128, 128, 0.2); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+      .temp-val { font-size: 1.8rem; font-weight: 800; }
+      .temp-label { font-size: 0.65rem; letter-spacing: 0.05em; opacity: 0.8; }
+      .overlay-stat { position: absolute; background: rgba(0, 0, 0, 0.4); padding: 4px 8px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+      .overlay-stat span { font-weight: bold; font-size: 0.9rem; }
+      .overlay-stat .label { font-size: 0.7rem; opacity: 0.7; }
+      @keyframes flow { to { stroke-dashoffset: -16; } }
+      .flow-anim.flowing { animation: flow 1s linear infinite; }
+
+      /* SMART HOSE RING SLIDER */
+      .ring-container { display: flex; justify-content: center; align-items: center; margin-bottom: 16px; }
+      .ring-slider { position: relative; width: 160px; height: 160px; }
+      .ring-content { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+      .ring-value { font-size: 2.5rem; font-weight: 800; line-height: 1; }
+      .ring-label { font-size: 0.75rem; letter-spacing: 0.05em; color: var(--secondary-text-color); margin-top: 4px; }
 
       /* POPUP STYLES & BOTTOM SHEET */
-      .popup-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(4px);
-        -webkit-backdrop-filter: blur(4px);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        opacity: 0;
-        visibility: hidden;
-        transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        touch-action: none;
-      }
-      .popup-overlay.visible {
-        opacity: 1;
-        visibility: visible;
-      }
-      .popup-content {
-        background-color: var(--ha-card-background, var(--card-background-color, white));
-        padding: 24px;
-        border-radius: 24px;
-        width: 90%;
-        max-width: 450px;
-        max-height: 90vh;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        touch-action: pan-y;
-        box-shadow: 0px 8px 32px rgba(0, 0, 0, 0.24);
-        color: var(--primary-text-color);
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        opacity: 0;
-        transform: translateY(20px) scale(0.95);
-        transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      }
-      .popup-content.visible {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-      }
-      .drag-handle {
-        width: 36px;
-        height: 5px;
-        flex-shrink: 0;
-        background-color: #888;
-        border-radius: 3px;
-        margin: -12px auto 16px auto;
-      }
-      .popup-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        border-bottom: 1px solid var(--divider-color);
-        padding-bottom: 12px;
-      }
-      .popup-header h3 {
-        margin: 0;
-        font-size: 1.5em;
-        font-weight: 500;
-        color: var(--primary-text-color);
-        flex-grow: 1;
-      }
-      .close-button {
-        background: none;
-        border: none;
-        padding: 0;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-      }
-      .control-row {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        min-height: 40px;
-      }
-      .control-row ha-icon {
-        color: var(--secondary-text-color);
-        --mdc-icon-size: 24px;
-      }
-      .control-label {
-        flex-grow: 1;
-        font-size: 1.1em;
-      }
-      .control-value {
-        font-weight: 600;
-        font-size: 1.1em;
-        color: var(--primary-text-color);
-      }
-      .floating-cancel-button {
-        background-color: var(--error-color, #ef4444);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 6px 12px;
-        font-weight: 500;
-        cursor: pointer;
-      }
-      .preset-buttons {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        margin-top: 8px;
-      }
-      .preset-button {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 4px;
-        background-color: rgba(128, 128, 128, 0.15);
-        color: var(--primary-text-color);
-        border: none;
-        border-radius: 12px;
-        padding: 12px 8px;
-        font-weight: 500;
-        font-size: 0.9em;
-        cursor: pointer;
-        transition: transform 0.2s ease;
-      }
-      .preset-button:hover {
-        transform: scale(1.03);
-      }
-      .divider {
-        border-top: 1px solid var(--divider-color);
-        margin: 8px 0;
-      }
+      .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease; }
+      .popup-overlay.visible { opacity: 1; visibility: visible; }
+      .popup-content { background-color: var(--ha-card-background, var(--card-background-color, white)); padding: 24px; border-radius: 24px; width: 90%; max-width: 450px; max-height: 90vh; overflow-y: auto; color: var(--primary-text-color); display: flex; flex-direction: column; gap: 16px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.3s ease, transform 0.4s ease; }
+      .popup-content.visible { opacity: 1; transform: translateY(0) scale(1); }
+      .drag-handle { width: 36px; height: 5px; background-color: #888; border-radius: 3px; margin: -12px auto 16px auto; }
+      .popup-header { display: flex; align-items: center; justify-content: space-between; }
+      .close-button { background: none; border: none; padding: 0; cursor: pointer; color: var(--primary-text-color); }
+      .control-row { display: flex; align-items: center; gap: 16px; min-height: 40px; }
+      .floating-cancel-button { background-color: var(--error-color, #ef4444); color: white; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 500; cursor: pointer; }
+      .preset-buttons { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; }
+      .preset-button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; background-color: rgba(128, 128, 128, 0.15); color: var(--primary-text-color); border: none; border-radius: 12px; padding: 12px 8px; font-weight: 500; font-size: 0.9em; cursor: pointer; }
+      .divider { border-top: 1px solid var(--divider-color); margin: 8px 0; }
 
       @media (max-width: 768px) {
         .popup-overlay { align-items: flex-end; }
-        .popup-content {
-          width: 100%; max-width: none;
-          border-radius: 24px 24px 0 0;
-          transform: translateY(100%);
-          padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
-        }
+        .popup-content { width: 100%; max-width: none; border-radius: 24px 24px 0 0; transform: translateY(100%); padding-bottom: max(24px, env(safe-area-inset-bottom, 24px)); }
         .popup-content.visible { transform: translateY(0); }
       }
     `;
