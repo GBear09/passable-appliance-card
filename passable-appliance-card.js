@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.8
+ * Version: 1.0.9
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,9 +11,11 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT under Temp + Sleek Interval Pill + 24h Barcode Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer + Battery & Telemetry)
+ * 
+ * Popups: Uniform header with X button + title beside it + divider line + right-aligned switches.
  */
 
-const CARD_VERSION = "1.0.8";
+const CARD_VERSION = "1.0.9";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -512,8 +514,10 @@ class PassableApplianceCard extends LitElement {
             </div>
 
             <div class="control-row status-row">
-              <ha-icon icon="mdi:water-boiler"></ha-icon>
-              <span class="control-label">Status:</span>
+              <div class="control-label-group">
+                <ha-icon icon="mdi:water-boiler"></ha-icon>
+                <span class="control-label">Status</span>
+              </div>
               <span class="control-value">${statusText}</span>
             </div>
 
@@ -540,14 +544,18 @@ class PassableApplianceCard extends LitElement {
 
             <h4 style="margin: 0 0 8px 0;">Other Controls</h4>
             <div class="control-row">
-              <ha-icon icon="${filterIcon}" style="${filterColorStyle}"></ha-icon>
-              <span class="control-label">Water Filter:</span>
+              <div class="control-label-group">
+                <ha-icon icon="${filterIcon}" style="${filterColorStyle}"></ha-icon>
+                <span class="control-label">Water Filter</span>
+              </div>
               <span class="control-value" style="${filterColorStyle}">${waterFilter.state}</span>
             </div>
 
             <div class="control-row">
-              <ha-icon icon="mdi:cube-outline"></ha-icon>
-              <span class="control-label">Ice Maker:</span>
+              <div class="control-label-group">
+                <ha-icon icon="mdi:cube-outline"></ha-icon>
+                <span class="control-label">Ice Maker</span>
+              </div>
               <ha-switch
                 .checked=${iceMaker.state === "on"}
                 @change=${() => this._toggleEntity(c.ice_maker_control)}
@@ -737,8 +745,10 @@ class PassableApplianceCard extends LitElement {
             <div class="divider"></div>
 
             <div class="control-row">
-              <ha-icon icon="mdi:lightbulb-outline"></ha-icon>
-              <span class="control-label">Oven Light</span>
+              <div class="control-label-group">
+                <ha-icon icon="mdi:lightbulb-outline"></ha-icon>
+                <span class="control-label">Oven Light</span>
+              </div>
               <ha-switch
                 .checked=${isLightOn}
                 @change=${() => this._toggleEntity(lightEntityId)}
@@ -880,7 +890,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 4. NAVIEN TANKLESS WATER HEATER (100% MATCH)
+  // 4. NAVIEN TANKLESS WATER HEATER
   // ==========================================
   _renderWaterHeater() {
     const c = this.config;
@@ -1531,19 +1541,38 @@ class PassableApplianceCard extends LitElement {
       .ring-value { font-size: 2.5rem; font-weight: 800; line-height: 1; }
       .ring-label { font-size: 0.75rem; letter-spacing: 0.05em; color: var(--secondary-text-color); margin-top: 4px; }
 
-      /* POPUP STYLES & BOTTOM SHEET */
+      /* UNIFORM POPUP STYLES & BOTTOM SHEET */
       .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease; }
       .popup-overlay.visible { opacity: 1; visibility: visible; }
-      .popup-content { background-color: var(--ha-card-background, var(--card-background-color, white)); padding: 24px; border-radius: 24px; width: 90%; max-width: 450px; max-height: 90vh; overflow-y: auto; color: var(--primary-text-color); display: flex; flex-direction: column; gap: 16px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.3s ease, transform 0.4s ease; }
+      .popup-content { background-color: var(--ha-card-background, var(--card-background-color, white)); padding: 20px 24px 24px; border-radius: 24px; width: 90%; max-width: 450px; max-height: 90vh; overflow-y: auto; color: var(--primary-text-color); display: flex; flex-direction: column; gap: 16px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.3s ease, transform 0.4s ease; }
       .popup-content.visible { opacity: 1; transform: translateY(0) scale(1); }
-      .drag-handle { width: 36px; height: 5px; background-color: #888; border-radius: 3px; margin: -12px auto 16px auto; }
-      .popup-header { display: flex; align-items: center; justify-content: space-between; }
-      .close-button { background: none; border: none; padding: 0; cursor: pointer; color: var(--primary-text-color); }
-      .control-row { display: flex; align-items: center; gap: 16px; min-height: 40px; }
+      .drag-handle { width: 36px; height: 5px; background-color: #888; border-radius: 3px; margin: -8px auto 16px auto; }
+      
+      .popup-header {
+        display: flex; align-items: center; justify-content: flex-start; gap: 14px; width: 100%;
+        padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+      }
+      .popup-header h3 {
+        margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--primary-text-color); letter-spacing: 0.01em;
+      }
+      .close-button {
+        background: none; border: none; padding: 4px; cursor: pointer; color: var(--primary-text-color);
+        display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background-color 0.2s;
+      }
+      .close-button:hover { background-color: rgba(255, 255, 255, 0.1); }
+      .close-button ha-icon { --mdc-icon-size: 22px; }
+
+      .control-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; }
+      .control-label-group { display: flex; align-items: center; gap: 12px; color: var(--primary-text-color); }
+      .control-label-group ha-icon { --mdc-icon-size: 22px; color: var(--secondary-text-color, #a1a1aa); }
+      .control-label { font-size: 1rem; font-weight: 500; color: var(--primary-text-color); }
+      .popup-switch { margin-left: auto; }
+      .control-value { margin-left: auto; font-weight: 600; font-size: 0.95rem; }
+
       .floating-cancel-button { background-color: var(--error-color, #ef4444); color: white; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 500; cursor: pointer; }
       .preset-buttons { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; }
       .preset-button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; background-color: rgba(128, 128, 128, 0.15); color: var(--primary-text-color); border: none; border-radius: 12px; padding: 12px 8px; font-weight: 500; font-size: 0.9em; cursor: pointer; }
-      .divider { border-top: 1px solid var(--divider-color); margin: 8px 0; }
+      .divider { border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); margin: 16px 0 12px 0; width: 100%; }
 
       /* FLUSH GUIDE MODAL */
       .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000; display: flex; justify-content: center; align-items: flex-end; backdrop-filter: blur(5px); }
