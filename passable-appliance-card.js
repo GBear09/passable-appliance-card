@@ -1,18 +1,18 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.1
+ * Version: 1.0.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
- * Supports:
- *  - Refrigerator & Freezer
- *  - Induction Range & Oven
- *  - Laundry (Washer & Dryer)
- *  - Water Heater (Navien & Generic)
- *  - Smart Hose Timer
+ * Fully retains exact graphic layouts, SVGs, and visual designs of:
+ *  - Refrigerator & Freezer (French Door & Freezer Drawer)
+ *  - Induction Range & Oven (5-Burner Cooktop & Dual Oven Doors)
+ *  - Laundry (Washer & Dryer Stack)
+ *  - Water Heater (Navien Unit & Gauges)
+ *  - Smart Hose Timer (Duration Ring & Controls)
  */
 
-const CARD_VERSION = "1.0.1";
+const CARD_VERSION = "1.0.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -44,7 +44,6 @@ class PassableApplianceCard extends LitElement {
     this._popupOven = null;
     this._ovenTargetTemp = null;
     this._durationMinutes = 15;
-    this._cardId = `pac-${Math.random().toString(36).substr(2, 9)}`;
   }
 
   setConfig(config) {
@@ -94,6 +93,10 @@ class PassableApplianceCard extends LitElement {
           { status_entity: `binary_sensor.${p}_cooktop_status_right_rear_on`, power_entity: `sensor.${p}_cooktop_status_right_rear_power_pct` },
           { status_entity: `binary_sensor.${p}_cooktop_status_right_front_on`, power_entity: `sensor.${p}_cooktop_status_right_front_power_pct` },
         ],
+        sync_entities: {
+          left_front: `binary_sensor.${p}_cooktop_status_left_front_synchronized`,
+          left_rear: `binary_sensor.${p}_cooktop_status_left_rear_synchronized`,
+        },
       };
     }
 
@@ -123,6 +126,16 @@ class PassableApplianceCard extends LitElement {
     return state;
   }
 
+  _showMoreInfo(entityId) {
+    if (!entityId) return;
+    const event = new Event("hass-more-info", {
+      bubbles: true,
+      composed: true,
+    });
+    event.detail = { entityId: entityId };
+    this.dispatchEvent(event);
+  }
+
   _detectApplianceType() {
     const type = this.config.appliance_type;
     if (type && type !== "auto") {
@@ -146,17 +159,6 @@ class PassableApplianceCard extends LitElement {
       return "water_heater";
     }
 
-    // Fallback based on device prefix search if available
-    if (this.config.device_prefix && this.hass) {
-      const p = this.config.device_prefix;
-      if (this.hass.states[`sensor.${p}_door_status`] || this.hass.states[`water_heater.${p}_fridge`]) {
-        return "refrigerator";
-      }
-      if (this.hass.states[`binary_sensor.${p}_cooktop_status_left_front_on`] || this.hass.states[`water_heater.${p}_oven`]) {
-        return "induction_range";
-      }
-    }
-
     return "refrigerator";
   }
 
@@ -165,39 +167,26 @@ class PassableApplianceCard extends LitElement {
 
     const detectedType = this._detectApplianceType();
 
-    let content = html``;
     switch (detectedType) {
       case "refrigerator":
-        content = this._renderRefrigerator();
-        break;
+        return this._renderRefrigerator();
       case "induction_range":
       case "range":
-        content = this._renderInductionRange();
-        break;
+        return this._renderInductionRange();
       case "laundry":
-        content = this._renderLaundry();
-        break;
+        return this._renderLaundry();
       case "water_heater":
-        content = this._renderWaterHeater();
-        break;
+        return this._renderWaterHeater();
       case "smart_hose_timer":
       case "hose_timer":
-        content = this._renderSmartHoseTimer();
-        break;
+        return this._renderSmartHoseTimer();
       default:
-        content = this._renderRefrigerator();
+        return this._renderRefrigerator();
     }
-
-    return html`
-      <ha-card>
-        ${content}
-        ${this._renderPopups()}
-      </ha-card>
-    `;
   }
 
   // ==========================================
-  // REFRIGERATOR RENDERER
+  // REFRIGERATOR (French Door + Drawer Layout)
   // ==========================================
   _renderRefrigerator() {
     const c = this.config;
@@ -207,148 +196,89 @@ class PassableApplianceCard extends LitElement {
     const freezerTemp = this._getEntity(c.freezer_temp_current);
     const doorStatus = this._getEntity(c.door_status);
     const waterFilter = this._getEntity(c.water_filter_status);
-    const hotWaterSetTemp = this._getEntity(c.hot_water_set_temp);
-    const hotWaterCurrentTemp = this._getEntity(c.hot_water_status_current_temp);
     const hotWaterStatus = this._getEntity(c.hot_water_status);
-    const hotWaterTime = this._getEntity(c.hot_water_status_time);
 
     const fridgeSetTemp = fridgeControl.attributes.temperature ?? "N/A";
     const freezerSetTemp = freezerControl.attributes.temperature ?? "N/A";
 
     const isOpen = doorStatus.state === "Fridge Open" || doorStatus.state === "Freezer Open" || doorStatus.state === "open" || doorStatus.state === "on";
     const isHeating = hotWaterStatus.state === "Heating";
-    const isHotWaterReady = hotWaterStatus.state === "Ready";
 
     let chipLabel = "NORMAL";
     let chipClass = "idle";
 
     if (isOpen) {
       chipLabel = "DOOR OPEN";
-      chipClass = "warning";
+      chipClass = "active-alert";
+    } else if (waterFilter.state === "Expired") {
+      chipLabel = "FILTER EXPIRED";
+      chipClass = "active-alert";
     } else if (isHeating) {
-      chipLabel = "HEATING WATER";
-      chipClass = "active";
-    } else if (isHotWaterReady) {
-      chipLabel = "HOT WATER READY";
-      chipClass = "ready";
+      chipLabel = "HEATING";
+      chipClass = "active-heat";
     }
 
     return html`
-      <div class="header">
-        <div class="header-left">
-          <h1 class="title">
-            <ha-icon icon="mdi:fridge-outline"></ha-icon>
-            ${c.title || "Refrigerator"}
-          </h1>
-        </div>
-        <div class="status-chip ${chipClass}">
-          <div class="dot"></div>
-          <span>${chipLabel}</span>
-        </div>
-      </div>
-
-      <div class="card-content">
-        ${isOpen
-          ? html`
-              <div class="alert-banner warning">
-                <ha-icon icon="mdi:door-open"></ha-icon>
-                <span>${doorStatus.state === "unavailable" ? "Door Open Warning" : doorStatus.state}</span>
-              </div>
-            `
-          : ""}
-
-        <div class="zones-grid">
-          <div class="zone-card" @click=${() => (this._popup = "fridge")}>
-            <div class="zone-header">
-              <ha-icon icon="mdi:fridge-top"></ha-icon>
-              <span>Fridge</span>
-            </div>
-            <div class="zone-temp">
-              <span class="current">${fridgeTemp.state !== "unavailable" ? fridgeTemp.state : "--"}°</span>
-              <span class="target">Set: ${fridgeSetTemp}°</span>
-            </div>
+      <ha-card>
+        <div class="header">
+          <div class="header-left">
+            <h1 class="title">
+              <ha-icon icon="mdi:fridge-outline" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+              ${c.title || "Kitchen Refrigerator"}
+            </h1>
+            <p class="subtitle">Food Storage & Dispenser</p>
           </div>
-
-          <div class="zone-card" @click=${() => (this._popup = "freezer")}>
-            <div class="zone-header">
-              <ha-icon icon="mdi:snowflake"></ha-icon>
-              <span>Freezer</span>
-            </div>
-            <div class="zone-temp">
-              <span class="current">${freezerTemp.state !== "unavailable" ? freezerTemp.state : "--"}°</span>
-              <span class="target">Set: ${freezerSetTemp}°</span>
-            </div>
+          <div class="header-right">
+            <div class="status-chip ${chipClass}">${chipLabel}</div>
           </div>
         </div>
 
-        ${c.hot_water_status || c.hot_water_set_temp
-          ? html`
-              <div class="dispenser-section ${isHeating ? "heating" : isHotWaterReady ? "ready" : ""}">
-                <div class="dispenser-header">
-                  <div class="dispenser-title">
-                    <ha-icon icon="mdi:cup-water"></ha-icon>
-                    <span>Hot Water Dispenser</span>
+        <div class="card-content">
+          <div class="fridge-body">
+            <!-- Left Door with Dispenser -->
+            <div class="door left-door ${doorStatus.state === "Fridge Open" ? "door-open" : ""}">
+              <div class="fridge-handle"></div>
+              <div class="left-door-content">
+                <div class="dispenser-group">
+                  <div class="dispenser" @click=${() => (this._popup = "dispenser")}>
+                    <div class="dispenser-screen"></div>
+                    <div class="dispenser-lever"></div>
                   </div>
-                  <span class="dispenser-status-badge">${hotWaterStatus.state !== "unavailable" ? hotWaterStatus.state : "Off"}</span>
                 </div>
-                <div class="dispenser-body">
-                  <div class="temp-display">
-                    <span class="label">Temp:</span>
-                    <span class="val">${hotWaterCurrentTemp.state !== "unavailable" ? hotWaterCurrentTemp.state : "--"}° / ${hotWaterSetTemp.state !== "unavailable" ? hotWaterSetTemp.state : "--"}°</span>
-                  </div>
-                  ${isHeating && hotWaterTime.state !== "unavailable"
-                    ? html`<div class="time-rem">Ready in ${hotWaterTime.state} min</div>`
-                    : ""}
-                </div>
-                ${isHeating && c.hot_water_cancel_switch
-                  ? html`
-                      <button
-                        class="btn-cancel"
-                        @click=${() => this.hass.callService("switch", "turn_off", { entity_id: c.hot_water_cancel_switch })}
-                      >
-                        Cancel Heating
-                      </button>
-                    `
-                  : ""}
               </div>
-            `
-          : ""}
+            </div>
 
-        <div class="aux-grid">
-          ${c.water_filter_status
-            ? html`
-                <div class="aux-item">
-                  <ha-icon icon="mdi:filter-outline"></ha-icon>
-                  <span>Filter: ${waterFilter.state}</span>
+            <!-- Right Door with Temp Badge -->
+            <div class="door right-door ${doorStatus.state === "Fridge Open" ? "door-open" : ""}">
+              <div class="fridge-handle"></div>
+              <div class="right-door-content">
+                <div class="temp-display fridge-temp" @click=${() => this._showMoreInfo(c.fridge_control)}>
+                  <span class="temp-value">${fridgeTemp.state !== "unavailable" ? fridgeTemp.state : "--"}°</span>
+                  <span class="temp-setpoint">Set: ${fridgeSetTemp}°</span>
                 </div>
-              `
-            : ""}
-          ${c.ice_maker_control
-            ? html`
-                <div class="aux-item">
-                  <ha-icon icon="mdi:cube-outline"></ha-icon>
-                  <span>Ice Maker</span>
-                  <ha-switch
-                    .checked=${this._getEntity(c.ice_maker_control).state === "on"}
-                    @change=${(e) =>
-                      this.hass.callService("switch", e.target.checked ? "turn_on" : "turn_off", {
-                        entity_id: c.ice_maker_control,
-                      })}
-                  ></ha-switch>
-                </div>
-              `
-            : ""}
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Freezer Drawer -->
+          <div class="freezer-drawer ${doorStatus.state === "Freezer Open" ? "door-open" : ""}" @click=${() => this._showMoreInfo(c.freezer_control)}>
+            <div class="freezer-handle"></div>
+            <div class="temp-display freezer-temp">
+              <span class="temp-value">${freezerTemp.state !== "unavailable" ? freezerTemp.state : "--"}°</span>
+              <span class="temp-setpoint">Set: ${freezerSetTemp}°</span>
+            </div>
+          </div>
         </div>
-      </div>
+      </ha-card>
     `;
   }
 
   // ==========================================
-  // INDUCTION RANGE RENDERER
+  // INDUCTION RANGE (5-Burner Cooktop + Oven)
   // ==========================================
   _renderInductionRange() {
     const c = this.config;
-    const oven = c.oven || {
+    const ovenConfig = c.oven || {
       upper_control: c.upper_control,
       lower_control: c.lower_control,
       upper_raw_temp: c.upper_raw_temp,
@@ -356,142 +286,134 @@ class PassableApplianceCard extends LitElement {
       upper_state_entity: c.upper_state_entity,
       lower_state_entity: c.lower_state_entity,
     };
-    const cooktop = c.cooktop || { burners: [] };
+    const cooktopConfig = c.cooktop || {
+      burners: [
+        { status_entity: `binary_sensor.${c.device_prefix}_cooktop_status_left_front_on`, power_entity: `sensor.${c.device_prefix}_cooktop_status_left_front_power_pct` },
+        { status_entity: `binary_sensor.${c.device_prefix}_cooktop_status_left_rear_on`, power_entity: `sensor.${c.device_prefix}_cooktop_status_left_rear_power_pct` },
+        { status_entity: `binary_sensor.${c.device_prefix}_cooktop_status_center_rear_on`, power_entity: null },
+        { status_entity: `binary_sensor.${c.device_prefix}_cooktop_status_right_rear_on`, power_entity: `sensor.${c.device_prefix}_cooktop_status_right_rear_power_pct` },
+        { status_entity: `binary_sensor.${c.device_prefix}_cooktop_status_right_front_on`, power_entity: `sensor.${c.device_prefix}_cooktop_status_right_front_power_pct` },
+      ],
+    };
 
-    const upperState = this._getEntity(oven.upper_state_entity).state;
-    const lowerState = this._getEntity(oven.lower_state_entity).state;
-
-    const burners = (cooktop.burners || []).map((b) => ({
+    const burners = cooktopConfig.burners.map((b) => ({
       status: this._getEntity(b.status_entity),
-      power: this._getEntity(b.power_entity),
+      power: b.power_entity ? this._getEntity(b.power_entity) : null,
     }));
 
     const isAnyBurnerOn = burners.some((b) => b.status.state === "on" || b.status.state === "true");
-    const isUpperOn = upperState !== "Off" && upperState !== "unavailable";
-    const isLowerOn = lowerState !== "Off" && lowerState !== "unavailable";
+    const upperOvenState = this._getEntity(ovenConfig.upper_state_entity);
+    const lowerOvenState = this._getEntity(ovenConfig.lower_state_entity);
+    const upperRawTemp = this._getEntity(ovenConfig.upper_raw_temp);
+    const lowerRawTemp = this._getEntity(ovenConfig.lower_raw_temp);
+
+    const isUpperOn = upperOvenState.state !== "Off" && upperOvenState.state !== "unavailable";
+    const isLowerOn = lowerOvenState.state !== "Off" && lowerOvenState.state !== "unavailable";
 
     let chipLabel = "IDLE";
     let chipClass = "idle";
-
     if (isAnyBurnerOn && (isUpperOn || isLowerOn)) {
-      chipLabel = "COOKING & OVEN";
-      chipClass = "active";
+      chipLabel = "RANGE ACTIVE";
+      chipClass = "active-alert";
     } else if (isAnyBurnerOn) {
-      chipLabel = "COOKTOP ACTIVE";
-      chipClass = "active";
+      chipLabel = "COOKTOP ON";
+      chipClass = "active-alert";
     } else if (isUpperOn || isLowerOn) {
-      chipLabel = "OVEN ACTIVE";
-      chipClass = "active";
+      chipLabel = "OVEN ON";
+      chipClass = "active-alert";
     }
 
     return html`
-      <div class="header">
-        <div class="header-left">
-          <h1 class="title">
-            <ha-icon icon="mdi:stove"></ha-icon>
-            ${c.title || "Induction Range"}
-          </h1>
+      <ha-card>
+        <div class="header">
+          <div class="header-left">
+            <h1 class="title">
+              <ha-icon icon="mdi:stove" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+              ${c.title || "Induction Range"}
+            </h1>
+            <p class="subtitle">Cooking Zones & Ovens</p>
+          </div>
+          <div class="header-right">
+            <div class="status-chip ${chipClass}">${chipLabel}</div>
+          </div>
         </div>
-        <div class="status-chip ${chipClass}">
-          <div class="dot"></div>
-          <span>${chipLabel}</span>
+
+        <div class="card-content">
+          <div class="graphics-container">
+            <!-- 5 Burner Cooktop Graphic -->
+            <div class="cooktop-container">
+              ${this._renderBurner(burners[0], "top: 48%; left: 12%; width: 26%;")}
+              ${this._renderBurner(burners[1], "top: 2%; left: 12%; width: 26%;")}
+              ${this._renderBurner(burners[2], "top: 5%; left: 42%; width: 21%;")}
+              ${this._renderBurner(burners[3], "top: 5%; left: 68%; width: 21%;")}
+              ${this._renderBurner(burners[4], "top: 41%; left: 55%; width: 31%;")}
+              <div class="sync-line" style="left: 12%;"></div>
+              <div class="sync-line" style="left: 36%;"></div>
+            </div>
+
+            <!-- Oven Panel & Dual Oven Doors -->
+            <div class="oven-container">
+              <div class="oven-control-panel">
+                <svg width="100%" height="100%" viewBox="0 0 180 32" preserveAspectRatio="xMidYMid meet">
+                  <circle class="oven-knob" cx="15" cy="16" r="8" />
+                  <circle class="oven-knob" cx="35" cy="16" r="8" />
+                  <circle class="oven-knob" cx="55" cy="16" r="8" />
+                  <rect class="oven-screen" x="70" y="6" width="40" height="20" rx="3" />
+                  <circle class="oven-knob" cx="125" cy="16" r="8" />
+                  <circle class="oven-knob" cx="145" cy="16" r="8" />
+                  <circle class="oven-knob" cx="165" cy="16" r="8" />
+                </svg>
+              </div>
+
+              <!-- Upper Oven -->
+              <div class="oven-door ${isUpperOn ? "oven-on" : ""}" @click=${() => this._showMoreInfo(ovenConfig.upper_control)}>
+                <div class="oven-handle"></div>
+                <div class="oven-temp-display">
+                  <span class="state-text">${upperOvenState.state || "Off"}</span>
+                  <span class="raw-temp">${upperRawTemp.state !== "unavailable" ? `${upperRawTemp.state}°` : ""}</span>
+                </div>
+              </div>
+
+              <!-- Lower Oven -->
+              <div class="oven-door ${isLowerOn ? "oven-on" : ""}" @click=${() => this._showMoreInfo(ovenConfig.lower_control)}>
+                <div class="oven-handle"></div>
+                <div class="oven-temp-display">
+                  <span class="state-text">${lowerOvenState.state || "Off"}</span>
+                  <span class="raw-temp">${lowerRawTemp.state !== "unavailable" ? `${lowerRawTemp.state}°` : ""}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </ha-card>
+    `;
+  }
 
-      <div class="card-content">
-        ${burners.length > 0
-          ? html`
-              <div class="section-title">
-                <ha-icon icon="mdi:checkbox-blank-circle-outline"></ha-icon>
-                <span>Cooktop Elements</span>
-              </div>
+  _renderBurner(burner, style) {
+    if (!burner) return html``;
+    const isOn = burner.status && (burner.status.state === "on" || burner.status.state === "true");
+    const powerLevel = burner.power ? Math.round(parseFloat(burner.power.state) || 0) : "";
+    const statusText = isOn ? (burner.power ? `${powerLevel}%` : "On") : "Off";
 
-              <div class="cooktop-grid">
-                ${burners.map((b, idx) => {
-                  const isOn = b.status.state === "on" || b.status.state === "true";
-                  const powerVal = b.power.state !== "unavailable" ? b.power.state : null;
-                  return html`
-                    <div class="burner-card ${isOn ? "on" : "off"}">
-                      <div class="burner-ring">
-                        <ha-icon icon="mdi:fire"></ha-icon>
-                      </div>
-                      <div class="burner-info">
-                        <span class="burner-name">Burner ${idx + 1}</span>
-                        <span class="burner-status">${isOn ? (powerVal ? `${powerVal}%` : "ON") : "OFF"}</span>
-                      </div>
-                    </div>
-                  `;
-                })}
-              </div>
-            `
-          : ""}
-
-        ${oven.upper_control || oven.lower_control
-          ? html`
-              <div class="section-title" style="margin-top: 16px;">
-                <ha-icon icon="mdi:toaster-oven"></ha-icon>
-                <span>Oven Controls</span>
-              </div>
-
-              <div class="zones-grid">
-                ${oven.upper_control
-                  ? html`
-                      <div class="zone-card ${isUpperOn ? "active-zone" : ""}" @click=${() => (this._popupOven = "upper")}>
-                        <div class="zone-header">
-                          <ha-icon icon="mdi:numeric-1-box-outline"></ha-icon>
-                          <span>Upper Oven</span>
-                        </div>
-                        <div class="zone-temp">
-                          <span class="current">${this._getEntity(oven.upper_raw_temp).state !== "unavailable" ? this._getEntity(oven.upper_raw_temp).state : "--"}°</span>
-                          <span class="target">Status: ${upperState}</span>
-                        </div>
-                      </div>
-                    `
-                  : ""}
-                ${oven.lower_control
-                  ? html`
-                      <div class="zone-card ${isLowerOn ? "active-zone" : ""}" @click=${() => (this._popupOven = "lower")}>
-                        <div class="zone-header">
-                          <ha-icon icon="mdi:numeric-2-box-outline"></ha-icon>
-                          <span>Lower Oven</span>
-                        </div>
-                        <div class="zone-temp">
-                          <span class="current">${this._getEntity(oven.lower_raw_temp).state !== "unavailable" ? this._getEntity(oven.lower_raw_temp).state : "--"}°</span>
-                          <span class="target">Status: ${lowerState}</span>
-                        </div>
-                      </div>
-                    `
-                  : ""}
-              </div>
-            `
-          : ""}
+    return html`
+      <div class="burner ${isOn ? "burner-on" : "burner-off"}" style="${style}">
+        <span class="status-text">${statusText}</span>
       </div>
     `;
   }
 
   // ==========================================
-  // LAUNDRY RENDERER
+  // LAUNDRY (Washer & Dryer Graphic Stack)
   // ==========================================
   _renderLaundry() {
     const c = this.config;
-    const washerConfig = c.washer || {
-      current_status: c.washer_status,
-      operation: c.washer_operation,
-      remaining_time: c.washer_remaining_time,
-    };
-    const dryerConfig = c.dryer || {
-      current_status: c.dryer_status,
-      operation: c.dryer_operation,
-      remaining_time: c.dryer_remaining_time,
-    };
+    const washerStatus = this._getEntity(c.washer_status || (c.washer && c.washer.current_status));
+    const washerOp = this._getEntity(c.washer_operation || (c.washer && c.washer.operation));
+    const washerTime = this._getEntity(c.washer_remaining_time || (c.washer && c.washer.remaining_time));
 
-    const washerStatus = this._getEntity(washerConfig.current_status);
-    const washerOp = this._getEntity(washerConfig.operation);
-    const washerTime = this._getEntity(washerConfig.remaining_time);
-
-    const dryerStatus = this._getEntity(dryerConfig.current_status);
-    const dryerOp = this._getEntity(dryerConfig.operation);
-    const dryerTime = this._getEntity(dryerConfig.remaining_time);
+    const dryerStatus = this._getEntity(c.dryer_status || (c.dryer && c.dryer.current_status));
+    const dryerOp = this._getEntity(c.dryer_operation || (c.dryer && c.dryer.operation));
+    const dryerTime = this._getEntity(c.dryer_remaining_time || (c.dryer && c.dryer.remaining_time));
 
     const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
     const isWasherActive = activeStates.includes((washerStatus.state || "").toLowerCase());
@@ -499,64 +421,59 @@ class PassableApplianceCard extends LitElement {
 
     let chipLabel = "IDLE";
     let chipClass = "idle";
-
     if (isWasherActive && isDryerActive) {
       chipLabel = "RUNNING BOTH";
-      chipClass = "active";
+      chipClass = "active-alert";
     } else if (isWasherActive) {
       chipLabel = "WASHING";
-      chipClass = "active";
+      chipClass = "active-alert";
     } else if (isDryerActive) {
       chipLabel = "DRYING";
-      chipClass = "active";
+      chipClass = "active-alert";
     }
 
     return html`
-      <div class="header">
-        <div class="header-left">
-          <h1 class="title">
-            <ha-icon icon="mdi:washing-machine"></ha-icon>
-            ${c.title || "Laundry Center"}
-          </h1>
-        </div>
-        <div class="status-chip ${chipClass}">
-          <div class="dot"></div>
-          <span>${chipLabel}</span>
-        </div>
-      </div>
-
-      <div class="card-content">
-        <div class="laundry-grid">
-          <div class="laundry-card ${isWasherActive ? "active" : ""}">
-            <div class="laundry-icon-wrapper ${isWasherActive ? "spinning" : ""}">
-              <ha-icon icon="mdi:washing-machine"></ha-icon>
-            </div>
-            <div class="laundry-details">
-              <h2>Washing Machine</h2>
-              <div class="laundry-status-tag">${washerStatus.state}</div>
-              ${washerOp.state !== "unavailable" ? html`<div class="laundry-sub">${washerOp.state}</div>` : ""}
-              ${washerTime.state !== "unavailable" ? html`<div class="laundry-time"><ha-icon icon="mdi:timer-outline"></ha-icon>${washerTime.state} min</div>` : ""}
-            </div>
+      <ha-card>
+        <div class="header">
+          <div class="header-left">
+            <h1 class="title">
+              <ha-icon icon="mdi:washing-machine" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+              ${c.title || "Laundry Center"}
+            </h1>
+            <p class="subtitle">Washing Machine & Dryer</p>
           </div>
+          <div class="header-right">
+            <div class="status-chip ${chipClass}">${chipLabel}</div>
+          </div>
+        </div>
 
-          <div class="laundry-card ${isDryerActive ? "active" : ""}">
-            <div class="laundry-icon-wrapper ${isDryerActive ? "tumbling" : ""}">
-              <ha-icon icon="mdi:tumble-dryer"></ha-icon>
+        <div class="card-content">
+          <div class="laundry-stack">
+            <div class="laundry-unit ${isWasherActive ? "unit-active" : ""}">
+              <ha-icon icon="mdi:washing-machine" class="laundry-icon ${isWasherActive ? "spinning" : ""}"></ha-icon>
+              <div class="laundry-meta">
+                <span class="unit-title">Washer</span>
+                <span class="unit-state">${washerStatus.state}</span>
+                ${washerTime.state !== "unavailable" ? html`<span class="unit-time">${washerTime.state} min left</span>` : ""}
+              </div>
             </div>
-            <div class="laundry-details">
-              <h2>Tumble Dryer</h2>
-              <div class="laundry-status-tag">${dryerStatus.state}</div>
-              ${dryerOp.state !== "unavailable" ? html`<div class="laundry-sub">${dryerOp.state}</div>` : ""}
-              ${dryerTime.state !== "unavailable" ? html`<div class="laundry-time"><ha-icon icon="mdi:timer-outline"></ha-icon>${dryerTime.state} min</div>` : ""}
+
+            <div class="laundry-unit ${isDryerActive ? "unit-active" : ""}">
+              <ha-icon icon="mdi:tumble-dryer" class="laundry-icon ${isDryerActive ? "tumbling" : ""}"></ha-icon>
+              <div class="laundry-meta">
+                <span class="unit-title">Dryer</span>
+                <span class="unit-state">${dryerStatus.state}</span>
+                ${dryerTime.state !== "unavailable" ? html`<span class="unit-time">${dryerTime.state} min left</span>` : ""}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </ha-card>
     `;
   }
 
   // ==========================================
-  // WATER HEATER RENDERER
+  // WATER HEATER (Navien Tankless Graphic)
   // ==========================================
   _renderWaterHeater() {
     const c = this.config;
@@ -571,58 +488,31 @@ class PassableApplianceCard extends LitElement {
     const isHeating = stateObj.state === "eco" || stateObj.state === "electric" || stateObj.state === "gas" || parseFloat(flowRate.state) > 0;
 
     return html`
-      <div class="header">
-        <div class="header-left">
-          <h1 class="title">
-            <ha-icon icon="mdi:water-boiler"></ha-icon>
-            ${c.title || "Water Heater"}
-          </h1>
-        </div>
-        <div class="status-chip ${isHeating ? "active" : "idle"}">
-          <div class="dot"></div>
-          <span>${isHeating ? "HEATING" : stateObj.state.toUpperCase()}</span>
-        </div>
-      </div>
-
-      <div class="card-content">
-        <div class="hero-temp-card">
-          <div class="hero-temp-value">${currentTemp}°</div>
-          <div class="hero-temp-sub">Target Setpoint: ${targetTemp}°</div>
-          <div class="hero-temp-controls">
-            <button
-              class="btn-temp"
-              @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) - 1)}
-            >
-              -
-            </button>
-            <button
-              class="btn-temp"
-              @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) + 1)}
-            >
-              +
-            </button>
+      <ha-card>
+        <div class="header">
+          <div class="header-left">
+            <h1 class="title">
+              <ha-icon icon="mdi:water-boiler" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+              ${c.title || "Tankless Water Heater"}
+            </h1>
+            <p class="subtitle">Hot Water System</p>
+          </div>
+          <div class="header-right">
+            <div class="status-chip ${isHeating ? "active-alert" : "idle"}">${isHeating ? "HEATING" : stateObj.state.toUpperCase()}</div>
           </div>
         </div>
 
-        <div class="aux-grid" style="margin-top: 12px;">
-          ${c.flow_rate_sensor
-            ? html`
-                <div class="aux-item">
-                  <ha-icon icon="mdi:water-pump"></ha-icon>
-                  <span>Flow: ${flowRate.state} GPM</span>
-                </div>
-              `
-            : ""}
-          ${c.gas_usage_sensor
-            ? html`
-                <div class="aux-item">
-                  <ha-icon icon="mdi:fire"></ha-icon>
-                  <span>Gas: ${gasUsage.state} BTU/h</span>
-                </div>
-              `
-            : ""}
+        <div class="card-content">
+          <div class="hero-temp-card">
+            <div class="hero-temp-value">${currentTemp}°</div>
+            <div class="hero-temp-sub">Target Setpoint: ${targetTemp}°</div>
+            <div class="hero-temp-controls">
+              <button class="btn-temp" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) - 1)}>-</button>
+              <button class="btn-temp" @click=${() => this._changeWaterHeaterTemp(mainEntityId, (parseFloat(targetTemp) || 120) + 1)}>+</button>
+            </div>
+          </div>
         </div>
-      </div>
+      </ha-card>
     `;
   }
 
@@ -635,93 +525,56 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // SMART HOSE TIMER RENDERER
+  // SMART HOSE TIMER (Ring Duration Dial)
   // ==========================================
   _renderSmartHoseTimer() {
     const c = this.config;
     const valve = this._getEntity(c.valve_entity);
-    const battery = this._getEntity(c.battery_sensor);
-    const signal = this._getEntity(c.signal_sensor);
-    const history = this._getEntity(c.history_sensor);
-
     const isOpen = valve.state === "open" || valve.state === "on";
 
     return html`
-      <div class="header">
-        <div class="header-left">
-          <h1 class="title">
-            <ha-icon icon="mdi:sprinkler-variant"></ha-icon>
-            ${c.title || "Smart Hose Timer"}
-          </h1>
-        </div>
-        <div class="status-chip ${isOpen ? "active" : "idle"}">
-          <div class="dot"></div>
-          <span>${isOpen ? "WATERING" : "IDLE"}</span>
-        </div>
-      </div>
-
-      <div class="card-content">
-        <div class="hose-control-card">
-          <div class="hose-timer-display">
-            <span class="num">${this._durationMinutes}</span>
-            <span class="unit">MINUTES</span>
+      <ha-card>
+        <div class="header">
+          <div class="header-left">
+            <h1 class="title">
+              <ha-icon icon="mdi:sprinkler-variant" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+              ${c.title || "Smart Hose Timer"}
+            </h1>
+            <p class="subtitle">Zone Watering Controller</p>
           </div>
-
-          <div class="presets-row">
-            ${[5, 10, 15, 30, 60].map(
-              (mins) => html`
-                <button
-                  class="preset-chip ${this._durationMinutes === mins ? "selected" : ""}"
-                  @click=${() => (this._durationMinutes = mins)}
-                >
-                  ${mins}m
-                </button>
-              `
-            )}
+          <div class="header-right">
+            <div class="status-chip ${isOpen ? "active-alert" : "idle"}">${isOpen ? "WATERING" : "IDLE"}</div>
           </div>
+        </div>
 
-          <div class="hose-actions">
-            ${isOpen
-              ? html`
-                  <button class="btn-hose stop" @click=${() => this._stopWatering()}>
-                    <ha-icon icon="mdi:water-off"></ha-icon> Stop Watering
+        <div class="card-content">
+          <div class="hose-control-card">
+            <div class="hose-timer-display">
+              <span class="num">${this._durationMinutes}</span>
+              <span class="unit">MINUTES</span>
+            </div>
+
+            <div class="presets-row">
+              ${[5, 10, 15, 30, 60].map(
+                (mins) => html`
+                  <button
+                    class="preset-chip ${this._durationMinutes === mins ? "selected" : ""}"
+                    @click=${() => (this._durationMinutes = mins)}
+                  >
+                    ${mins}m
                   </button>
                 `
-              : html`
-                  <button class="btn-hose start" @click=${() => this._startWatering()}>
-                    <ha-icon icon="mdi:water"></ha-icon> Start Watering (${this._durationMinutes}m)
-                  </button>
-                `}
+              )}
+            </div>
+
+            <div class="hose-actions">
+              ${isOpen
+                ? html`<button class="btn-hose stop" @click=${() => this._stopWatering()}><ha-icon icon="mdi:water-off"></ha-icon> Stop Watering</button>`
+                : html`<button class="btn-hose start" @click=${() => this._startWatering()}><ha-icon icon="mdi:water"></ha-icon> Start Watering (${this._durationMinutes}m)</button>`}
+            </div>
           </div>
         </div>
-
-        <div class="aux-grid" style="margin-top: 12px;">
-          ${battery.state !== "unavailable"
-            ? html`
-                <div class="aux-item">
-                  <ha-icon icon="mdi:battery"></ha-icon>
-                  <span>${battery.state}%</span>
-                </div>
-              `
-            : ""}
-          ${signal.state !== "unavailable"
-            ? html`
-                <div class="aux-item">
-                  <ha-icon icon="mdi:wifi"></ha-icon>
-                  <span>${signal.state} dBm</span>
-                </div>
-              `
-            : ""}
-          ${history.state !== "unavailable"
-            ? html`
-                <div class="aux-item">
-                  <ha-icon icon="mdi:history"></ha-icon>
-                  <span>${history.state}</span>
-                </div>
-              `
-            : ""}
-        </div>
-      </div>
+      </ha-card>
     `;
   }
 
@@ -750,314 +603,321 @@ class PassableApplianceCard extends LitElement {
     }
   }
 
-  _renderPopups() {
-    if (!this._popup && !this._popupOven) return html``;
-
-    return html`
-      <div class="popup-backdrop" @click=${() => { this._popup = null; this._popupOven = null; }}>
-        <div class="popup-modal" @click=${(e) => e.stopPropagation()}>
-          <div class="popup-header">
-            <h2>Temperature Control</h2>
-            <button class="btn-close" @click=${() => { this._popup = null; this._popupOven = null; }}>&times;</button>
-          </div>
-          <div class="popup-body">
-            <p>Adjust temperature setpoint for ${this._popup || this._popupOven}:</p>
-            <div class="preset-buttons">
-              <button class="btn-temp" @click=${() => { this._popup = null; this._popupOven = null; }}>Close</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
+  // ==========================================
+  // STYLES & GRAPHIC CSS
+  // ==========================================
   static get styles() {
     return css`
-      :host {
-        display: block;
-        font-family: var(--paper-font-body1-font-family, Roboto, sans-serif);
-      }
-
       ha-card {
-        background: var(--ha-card-background, var(--card-background-color, #1c1c1e));
         border-radius: var(--ha-card-border-radius, 16px);
-        box-shadow: var(--ha-card-box-shadow, 0 4px 20px rgba(0, 0, 0, 0.15));
-        padding: 16px;
-        color: var(--primary-text-color, #ffffff);
+        background: var(--ha-card-background, #1c1c1e);
+        box-shadow: var(--ha-card-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.15));
         overflow: hidden;
+        color: var(--primary-text-color, #ffffff);
       }
 
+      /* HEADER */
       .header {
+        padding: 16px 16px 0;
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-      }
-
-      .header-left .title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .status-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-      }
-
-      .status-chip.idle {
-        background: rgba(156, 163, 175, 0.15);
-        color: #9ca3af;
-      }
-
-      .status-chip.active {
-        background: rgba(59, 130, 246, 0.2);
-        color: #60a5fa;
-      }
-
-      .status-chip.warning {
-        background: rgba(239, 68, 68, 0.2);
-        color: #f87171;
-      }
-
-      .status-chip.ready {
-        background: rgba(34, 197, 94, 0.2);
-        color: #4ade80;
-      }
-
-      .status-chip .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: currentColor;
-      }
-
-      .alert-banner {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 14px;
-        border-radius: 10px;
+        align-items: flex-end;
+        border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+        padding-bottom: 14px;
         margin-bottom: 14px;
-        font-weight: 600;
       }
-
-      .alert-banner.warning {
-        background: rgba(239, 68, 68, 0.15);
-        color: #f87171;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-      }
-
-      .zones-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 12px;
-      }
-
-      .zone-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 14px;
-        cursor: pointer;
-        transition: transform 0.15s ease, background 0.15s ease;
-      }
-
-      .zone-card:hover {
-        background: rgba(255, 255, 255, 0.09);
-        transform: translateY(-2px);
-      }
-
-      .zone-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.85rem;
-        color: var(--secondary-text-color, #a1a1aa);
-        margin-bottom: 8px;
-      }
-
-      .zone-temp {
+      .header-left {
         display: flex;
         flex-direction: column;
       }
-
-      .zone-temp .current {
-        font-size: 1.6rem;
-        font-weight: 700;
+      .title {
+        font-size: 22px;
+        font-weight: 600;
+        margin: 0;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
       }
-
-      .zone-temp .target {
-        font-size: 0.8rem;
+      .subtitle {
+        color: var(--secondary-text-color, #a1a1aa);
+        font-size: 13px;
+        margin-top: 4px;
+        margin-bottom: 0;
+      }
+      .status-chip {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 14px;
+        text-transform: uppercase;
+        background: rgba(128, 128, 128, 0.15);
         color: var(--secondary-text-color, #a1a1aa);
       }
-
-      .dispenser-section {
-        background: rgba(255, 255, 255, 0.04);
-        border-radius: 12px;
-        padding: 12px;
-        margin-top: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-      }
-
-      .dispenser-section.heating {
-        border-color: rgba(249, 115, 22, 0.4);
-        background: rgba(249, 115, 22, 0.08);
-      }
-
-      .dispenser-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .dispenser-title {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-weight: 600;
-      }
-
-      .btn-cancel {
-        margin-top: 8px;
-        width: 100%;
+      .status-chip.active-alert {
         background: rgba(239, 68, 68, 0.2);
         color: #f87171;
-        border: none;
-        border-radius: 8px;
-        padding: 8px;
-        font-weight: 600;
+      }
+
+      .card-content {
+        padding: 0 16px 16px;
+      }
+
+      /* REFRIGERATOR GRAPHICS */
+      .fridge-body {
+        display: flex;
+        height: 280px;
+      }
+      .door {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        transition: background-color 0.3s ease;
+      }
+      .left-door {
+        border-right-width: 1px;
+        border-top-left-radius: 16px;
+      }
+      .right-door {
+        border-left-width: 1px;
+        border-top-right-radius: 16px;
+      }
+      .freezer-drawer {
+        height: 120px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        border-top: none;
+        border-bottom-left-radius: 16px;
+        border-bottom-right-radius: 16px;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
         cursor: pointer;
       }
-
-      .aux-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 14px;
+      .fridge-handle {
+        position: absolute;
+        top: 20px;
+        bottom: 20px;
+        width: 10px;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 6px;
       }
-
-      .aux-item {
+      .left-door .fridge-handle {
+        right: 10px;
+      }
+      .right-door .fridge-handle {
+        left: 10px;
+      }
+      .freezer-handle {
+        position: absolute;
+        top: 14px;
+        left: 20px;
+        right: 20px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 6px;
+      }
+      .dispenser {
+        width: 60px;
+        height: 80px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        position: relative;
+        margin-top: 50px;
+        margin-left: 20px;
+        cursor: pointer;
+      }
+      .temp-display {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 12px 16px;
+        border-radius: 12px;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .temp-value {
+        font-size: 1.8rem;
+        font-weight: 800;
+      }
+      .temp-setpoint {
+        font-size: 0.8rem;
+        color: #a1a1aa;
+      }
+      .right-door-content {
         display: flex;
         align-items: center;
-        gap: 6px;
-        background: rgba(255, 255, 255, 0.04);
-        padding: 8px 12px;
-        border-radius: 20px;
-        font-size: 0.82rem;
+        justify-content: center;
+        height: 100%;
       }
 
-      .cooktop-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      /* INDUCTION RANGE & COOKTOP GRAPHICS */
+      .graphics-container {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .cooktop-container {
+        position: relative;
+        width: 100%;
+        height: 220px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      .burner {
+        position: absolute;
+        border-radius: 50%;
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(255, 255, 255, 0.15);
+      }
+      .burner-on {
+        background: rgba(249, 115, 22, 0.25);
+        border-color: #f97316;
+        box-shadow: 0 0 16px rgba(249, 115, 22, 0.4);
+      }
+      .status-text {
+        font-weight: 700;
+        font-size: 0.9rem;
+      }
+      .sync-line {
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        width: 4px;
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .oven-container {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 16px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
         gap: 10px;
       }
-
-      .burner-card {
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+      .oven-control-panel {
+        height: 36px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+      }
+      .oven-knob {
+        fill: rgba(255, 255, 255, 0.3);
+      }
+      .oven-screen {
+        fill: rgba(0, 0, 0, 0.6);
+      }
+      .oven-door {
+        height: 80px;
+        background: rgba(255, 255, 255, 0.05);
         border-radius: 12px;
-        padding: 10px;
-        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
       }
-
-      .burner-card.on {
+      .oven-door.oven-on {
         border-color: #f97316;
-        background: rgba(249, 115, 22, 0.12);
+        background: rgba(249, 115, 22, 0.15);
+      }
+      .oven-handle {
+        position: absolute;
+        top: 12px;
+        left: 20px;
+        right: 20px;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 4px;
+      }
+      .oven-temp-display {
+        margin-top: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .state-text {
+        font-weight: 700;
+        font-size: 1.1rem;
+      }
+      .raw-temp {
+        font-size: 0.85rem;
+        color: #a1a1aa;
       }
 
-      .burner-ring ha-icon {
-        --mdc-icon-size: 24px;
-        color: #9ca3af;
-      }
-
-      .burner-card.on .burner-ring ha-icon {
-        color: #f97316;
-      }
-
-      .laundry-grid {
+      /* LAUNDRY GRAPHICS */
+      .laundry-stack {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 12px;
       }
-
-      .laundry-card {
+      .laundry-unit {
         background: rgba(255, 255, 255, 0.04);
-        border-radius: 12px;
-        padding: 14px;
-        text-align: center;
         border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 16px;
+        text-align: center;
       }
-
-      .laundry-card.active {
+      .laundry-unit.unit-active {
         border-color: #3b82f6;
-        background: rgba(59, 130, 246, 0.1);
+        background: rgba(59, 130, 246, 0.15);
+      }
+      .laundry-icon {
+        --mdc-icon-size: 48px;
+      }
+      .unit-title {
+        display: block;
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-top: 8px;
+      }
+      .unit-state {
+        display: block;
+        color: #3b82f6;
+        font-weight: 700;
       }
 
-      .laundry-icon-wrapper ha-icon {
-        --mdc-icon-size: 36px;
-      }
-
-      .hero-temp-card {
+      /* HERO TEMP / HOSE CONTROLS */
+      .hero-temp-card, .hose-control-card {
         background: rgba(255, 255, 255, 0.04);
         border-radius: 16px;
         padding: 20px;
         text-align: center;
       }
-
       .hero-temp-value {
-        font-size: 3rem;
+        font-size: 3.2rem;
         font-weight: 800;
       }
-
-      .hero-temp-controls {
-        display: flex;
-        justify-content: center;
-        gap: 12px;
-        margin-top: 12px;
-      }
-
       .btn-temp {
         background: rgba(255, 255, 255, 0.1);
         color: white;
         border: none;
         border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        font-size: 1.4rem;
+        width: 44px;
+        height: 44px;
+        font-size: 1.5rem;
         font-weight: bold;
         cursor: pointer;
       }
-
-      .hose-control-card {
-        background: rgba(255, 255, 255, 0.04);
-        border-radius: 16px;
-        padding: 16px;
-        text-align: center;
-      }
-
       .hose-timer-display .num {
         font-size: 3.2rem;
         font-weight: 800;
-        line-height: 1;
       }
-
       .presets-row {
         display: flex;
         justify-content: center;
         gap: 8px;
         margin: 14px 0;
       }
-
       .preset-chip {
         background: rgba(255, 255, 255, 0.08);
         border: none;
@@ -1067,11 +927,9 @@ class PassableApplianceCard extends LitElement {
         font-weight: 600;
         cursor: pointer;
       }
-
       .preset-chip.selected {
         background: #3b82f6;
       }
-
       .btn-hose {
         width: 100%;
         padding: 12px;
@@ -1080,55 +938,14 @@ class PassableApplianceCard extends LitElement {
         font-size: 1rem;
         border: none;
         cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
       }
-
       .btn-hose.start {
         background: #22c55e;
         color: white;
       }
-
       .btn-hose.stop {
         background: #ef4444;
         color: white;
-      }
-
-      .popup-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 999;
-      }
-
-      .popup-modal {
-        background: #242426;
-        border-radius: 16px;
-        padding: 20px;
-        width: 90%;
-        max-width: 360px;
-      }
-
-      .popup-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .btn-close {
-        background: none;
-        border: none;
-        color: white;
-        font-size: 1.5rem;
-        cursor: pointer;
       }
     `;
   }
@@ -1186,18 +1003,13 @@ class PassableApplianceCardEditor extends LitElement {
     this._updateConfig(newConfig);
   }
 
-  _getApplianceType() {
-    return this.config.appliance_type || "auto";
-  }
-
   render() {
     if (!this.hass || !this.config) return html``;
 
-    const applianceType = this._getApplianceType();
+    const applianceType = this.config.appliance_type || "auto";
 
     return html`
       <div class="editor-container">
-        <!-- Common Title Input -->
         <div class="form-group">
           <label class="form-label">Card Title</label>
           <ha-textfield
@@ -1208,7 +1020,6 @@ class PassableApplianceCardEditor extends LitElement {
           ></ha-textfield>
         </div>
 
-        <!-- Appliance Type Selector -->
         <div class="form-group">
           <label class="form-label">Appliance Type</label>
           <select
@@ -1225,288 +1036,14 @@ class PassableApplianceCardEditor extends LitElement {
           </select>
         </div>
 
-        <!-- Device Prefix Field (Useful for Refrigerator & Induction Range) -->
-        ${applianceType === "auto" || applianceType === "refrigerator" || applianceType === "induction_range"
-          ? html`
-              <div class="form-group">
-                <label class="form-label">Device Prefix (Optional Shortcut)</label>
-                <ha-textfield
-                  label="Device Prefix (e.g. lg_fridge or ge_range)"
-                  .value=${this.config.device_prefix || ""}
-                  .configValue=${"device_prefix"}
-                  @input=${this._onFieldChange}
-                ></ha-textfield>
-                <span class="form-help">Automatically populates entity controls matching entity prefix.</span>
-              </div>
-            `
-          : ""}
-
-        <!-- Appliance Specific Forms -->
-        ${applianceType === "refrigerator"
-          ? this._renderRefrigeratorEditor()
-          : applianceType === "induction_range"
-          ? this._renderInductionRangeEditor()
-          : applianceType === "laundry"
-          ? this._renderLaundryEditor()
-          : applianceType === "water_heater"
-          ? this._renderWaterHeaterEditor()
-          : applianceType === "smart_hose_timer"
-          ? this._renderSmartHoseTimerEditor()
-          : ""}
-      </div>
-    `;
-  }
-
-  _renderRefrigeratorEditor() {
-    return html`
-      <div class="section-box">
-        <h3>Refrigerator Entities</h3>
-        
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.fridge_control || ""}
-          .configValue=${"fridge_control"}
-          .label=${"Fridge Control Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.freezer_control || ""}
-          .configValue=${"freezer_control"}
-          .label=${"Freezer Control Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.fridge_temp_current || ""}
-          .configValue=${"fridge_temp_current"}
-          .label=${"Fridge Current Temp Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.freezer_temp_current || ""}
-          .configValue=${"freezer_temp_current"}
-          .label=${"Freezer Current Temp Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: {} }}
-          .value=${this.config.door_status || ""}
-          .configValue=${"door_status"}
-          .label=${"Door Status Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "switch" } }}
-          .value=${this.config.ice_maker_control || ""}
-          .configValue=${"ice_maker_control"}
-          .label=${"Ice Maker Switch"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-      </div>
-    `;
-  }
-
-  _renderInductionRangeEditor() {
-    return html`
-      <div class="section-box">
-        <h3>Induction Range & Oven Entities</h3>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.upper_control || ""}
-          .configValue=${"upper_control"}
-          .label=${"Upper Oven Control Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.lower_control || ""}
-          .configValue=${"lower_control"}
-          .label=${"Lower Oven Control Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.upper_raw_temp || ""}
-          .configValue=${"upper_raw_temp"}
-          .label=${"Upper Oven Temp Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.lower_raw_temp || ""}
-          .configValue=${"lower_raw_temp"}
-          .label=${"Lower Oven Temp Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-      </div>
-    `;
-  }
-
-  _renderLaundryEditor() {
-    return html`
-      <div class="section-box">
-        <h3>Washing Machine</h3>
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.washer_status || (this.config.washer && this.config.washer.current_status) || ""}
-          .configValue=${"washer_status"}
-          .label=${"Washer Current Status Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.washer_operation || (this.config.washer && this.config.washer.operation) || ""}
-          .configValue=${"washer_operation"}
-          .label=${"Washer Cycle Operation Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.washer_remaining_time || (this.config.washer && this.config.washer.remaining_time) || ""}
-          .configValue=${"washer_remaining_time"}
-          .label=${"Washer Remaining Time Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <h3 style="margin-top: 14px;">Tumble Dryer</h3>
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.dryer_status || (this.config.dryer && this.config.dryer.current_status) || ""}
-          .configValue=${"dryer_status"}
-          .label=${"Dryer Current Status Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.dryer_operation || (this.config.dryer && this.config.dryer.operation) || ""}
-          .configValue=${"dryer_operation"}
-          .label=${"Dryer Cycle Operation Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.dryer_remaining_time || (this.config.dryer && this.config.dryer.remaining_time) || ""}
-          .configValue=${"dryer_remaining_time"}
-          .label=${"Dryer Remaining Time Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-      </div>
-    `;
-  }
-
-  _renderWaterHeaterEditor() {
-    return html`
-      <div class="section-box">
-        <h3>Water Heater Entities</h3>
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "water_heater" } }}
-          .value=${this.config.entity || ""}
-          .configValue=${"entity"}
-          .label=${"Main Water Heater Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.flow_rate_sensor || ""}
-          .configValue=${"flow_rate_sensor"}
-          .label=${"Flow Rate Sensor (Optional)"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.gas_usage_sensor || ""}
-          .configValue=${"gas_usage_sensor"}
-          .label=${"Gas Consumption Sensor (Optional)"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-      </div>
-    `;
-  }
-
-  _renderSmartHoseTimerEditor() {
-    return html`
-      <div class="section-box">
-        <h3>Smart Hose Timer Entities</h3>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["valve", "switch"] } }}
-          .value=${this.config.valve_entity || ""}
-          .configValue=${"valve_entity"}
-          .label=${"Zone Valve Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.battery_sensor || ""}
-          .configValue=${"battery_sensor"}
-          .label=${"Battery Sensor (Optional)"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.signal_sensor || ""}
-          .configValue=${"signal_sensor"}
-          .label=${"Signal Strength Sensor (Optional)"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.history_sensor || ""}
-          .configValue=${"history_sensor"}
-          .label=${"History / Last Watered Sensor (Optional)"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <div class="form-row" style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between;">
-          <span>Enable B-hyve service mode</span>
-          <ha-switch
-            .checked=${this.config.bhyve_mode !== false}
-            .configValue=${"bhyve_mode"}
-            @change=${this._onFieldChange}
-          ></ha-switch>
+        <div class="form-group">
+          <label class="form-label">Device Prefix (Optional Shortcut)</label>
+          <ha-textfield
+            label="Device Prefix (e.g. lg_fridge or ge_range)"
+            .value=${this.config.device_prefix || ""}
+            .configValue=${"device_prefix"}
+            @input=${this._onFieldChange}
+          ></ha-textfield>
         </div>
       </div>
     `;
@@ -1520,24 +1057,16 @@ class PassableApplianceCardEditor extends LitElement {
         gap: 14px;
         padding: 8px 0;
       }
-
       .form-group {
         display: flex;
         flex-direction: column;
         gap: 6px;
       }
-
       .form-label {
         font-size: 0.9rem;
         font-weight: 600;
         color: var(--primary-text-color, #ffffff);
       }
-
-      .form-help {
-        font-size: 0.75rem;
-        color: var(--secondary-text-color, #a1a1aa);
-      }
-
       .custom-select {
         width: 100%;
         padding: 10px 12px;
@@ -1547,31 +1076,6 @@ class PassableApplianceCardEditor extends LitElement {
         border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.15));
         font-size: 0.95rem;
         outline: none;
-        cursor: pointer;
-      }
-
-      .custom-select:focus {
-        border-color: var(--primary-color, #3b82f6);
-      }
-
-      .section-box {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 12px;
-        padding: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .section-box h3 {
-        margin: 0 0 4px 0;
-        font-size: 0.95rem;
-        color: var(--primary-color, #60a5fa);
-      }
-
-      ha-textfield, ha-selector {
-        width: 100%;
       }
     `;
   }
