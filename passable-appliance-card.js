@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.9
+ * Version: 1.0.10
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -9,13 +9,13 @@
  *  1. Refrigerator & Freezer (Scoped CSS French Door + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
- *  4. Navien Water Heater (SVG Chassis + Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT under Temp + Sleek Interval Pill + 24h Barcode Timeline + Customizable Flush Guide)
+ *  4. Navien Water Heater (SVG Chassis + Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT under Temp + Sleek Interval Pill + Interactive Timeline showing Start/Stop Times & Pointer Cursor + Customizable Flush Guide)
  *  5. Smart Hose Timer (Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer + Battery & Telemetry)
  * 
  * Popups: Uniform header with X button + title beside it + divider line + right-aligned switches.
  */
 
-const CARD_VERSION = "1.0.9";
+const CARD_VERSION = "1.0.10";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -196,6 +196,16 @@ class PassableApplianceCard extends LitElement {
       console.error("Failed to fetch history for timeline", e);
       this._historyData = [];
     }
+  }
+
+  _formatShortTime(dateObj) {
+    if (!dateObj || isNaN(dateObj.getTime())) return "";
+    return dateObj.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  _selectTimelineSegment(text) {
+    this._fireHaptic("light");
+    this._selectedSegmentText = text;
   }
 
   _detectApplianceType() {
@@ -925,7 +935,7 @@ class PassableApplianceCard extends LitElement {
         recircSubLabel += ` • Ran for ${recircDuration.state}`;
       }
     } else {
-      recircSubLabel = "• 20 min ago • Ran for 1m 0s";
+      recircSubLabel = "• 9 min ago • Ran for 39s";
     }
 
     return html`
@@ -1079,15 +1089,15 @@ class PassableApplianceCard extends LitElement {
 
                     <div class="timeline-container" style="display:flex; flex-direction:column; gap:4px;">
                       <div class="timeline-label" style="font-size:0.75em; text-transform:uppercase; color:var(--secondary-text-color); font-weight:600;">LAST 24 HOURS</div>
-                      <div class="timeline-track" style="height:24px; width:100%; background:var(--card-background-color, #fff); border:1px solid var(--divider-color); border-radius:6px; overflow:hidden; display:flex; position:relative;">
+                      <div class="timeline-track" style="height:24px; width:100%; background:var(--card-background-color, #111827); border:1px solid var(--divider-color); border-radius:6px; overflow:hidden; display:flex; position:relative; cursor:pointer;">
                         ${this._renderTimelineBarcode()}
                       </div>
                       <div class="timeline-axis" style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--secondary-text-color); margin-top:2px;">
-                        <span>1:30 PM</span>
-                        <span>1:30 AM</span>
-                        <span>1:30 PM</span>
+                        <span>1:50 PM</span>
+                        <span>1:50 AM</span>
+                        <span>1:50 PM</span>
                       </div>
-                      <div class="segment-info" style="text-align:center; font-size:0.8rem; color:var(--primary-color); margin-top:4px;">${this._selectedSegmentText}</div>
+                      <div class="segment-info" style="text-align:center; font-size:0.85rem; font-weight:600; color:var(--success-color, #86efac); margin-top:4px;">${this._selectedSegmentText}</div>
                     </div>
                   </div>
                 `
@@ -1101,57 +1111,99 @@ class PassableApplianceCard extends LitElement {
   }
 
   _renderTimelineBarcode() {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+    const startMs = nowMs - twentyFourHoursMs;
+
     if (this._historyData && this._historyData.length > 0) {
-      const now = new Date().getTime();
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      const start = now - twentyFourHours;
       const data = [...this._historyData].sort(
         (a, b) => new Date(a.last_changed).getTime() - new Date(b.last_changed).getTime()
       );
 
       const segments = [];
-      let lastTime = start;
+      let lastTime = startMs;
       let lastState = data.length > 0 ? (data[0].state === "on" ? "off" : "on") : "off";
 
       data.forEach((item) => {
         const changeTime = new Date(item.last_changed).getTime();
         if (changeTime > lastTime) {
           const duration = changeTime - lastTime;
-          const pct = (duration / twentyFourHours) * 100;
+          const pct = (duration / twentyFourHoursMs) * 100;
+          const stateTxt = lastState === "on" ? "Running" : "Idle";
+          const mins = Math.round(duration / 60000);
+          const durTxt = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+          const startStr = this._formatShortTime(new Date(lastTime));
+          const endStr = this._formatShortTime(new Date(changeTime));
+          const text = `${stateTxt}: ${startStr} - ${endStr} (${durTxt})`;
+
           segments.push({
             width: pct,
-            color: lastState === "on" ? "var(--primary-color, #3b82f6)" : "transparent",
-            text: `${lastState === "on" ? "Running" : "Idle"} (${Math.round(duration / 60000)}m)`,
+            color: lastState === "on" ? "var(--success-color, #86efac)" : "transparent",
+            text: text,
           });
         }
         lastState = item.state;
         lastTime = changeTime;
       });
 
-      if (lastTime < now) {
-        const duration = now - lastTime;
-        const pct = (duration / twentyFourHours) * 100;
+      if (lastTime < nowMs) {
+        const duration = nowMs - lastTime;
+        const pct = (duration / twentyFourHoursMs) * 100;
+        const stateTxt = lastState === "on" ? "Running" : "Idle";
+        const mins = Math.round(duration / 60000);
+        const durTxt = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+        const startStr = this._formatShortTime(new Date(lastTime));
+        const endStr = this._formatShortTime(new Date(nowMs));
+        const text = `${stateTxt}: ${startStr} - ${endStr} (${durTxt})`;
+
         segments.push({
           width: pct,
-          color: lastState === "on" ? "var(--primary-color, #3b82f6)" : "transparent",
-          text: `${lastState === "on" ? "Running" : "Idle"} (${Math.round(duration / 60000)}m)`,
+          color: lastState === "on" ? "var(--success-color, #86efac)" : "transparent",
+          text: text,
         });
       }
 
       return segments.map(
-        (seg) => html`<div class="timeline-segment" style="width: ${seg.width}%; background-color: ${seg.color}; flex-shrink: 0;" title=${seg.text} @click=${() => (this._selectedSegmentText = seg.text)}></div>`
+        (seg) => html`
+          <div
+            class="timeline-segment"
+            style="width: ${seg.width}%; background-color: ${seg.color}; flex-shrink: 0; cursor: pointer;"
+            title=${seg.text}
+            @click=${() => this._selectTimelineSegment(seg.text)}
+          ></div>
+        `
       );
     }
 
-    // Default barcode pattern for short 1-2 minute recirc runs across 24h
-    const ticks = [];
-    for (let i = 0; i < 48; i++) {
+    // Default barcode pattern with exact start / stop times when clicked
+    const segments = [];
+    const numSegments = 48; // 30 min slots over 24h
+    const slotMs = 30 * 60 * 1000;
+
+    for (let i = 0; i < numSegments; i++) {
+      const segStart = startMs + i * slotMs;
+      const segEnd = segStart + slotMs;
       const isRun = i % 3 === 0 || i % 7 === 0;
-      ticks.push(
-        html`<div class="timeline-segment" style="flex: 1; height: 100%; background: ${isRun ? "var(--primary-color, #3b82f6)" : "transparent"}; margin: 0 1px;" title=${isRun ? "Recirculation Run: 1m" : "Idle"}></div>`
+      const stateTxt = isRun ? "Running" : "Idle";
+      const startStr = this._formatShortTime(new Date(segStart));
+      const endStr = this._formatShortTime(new Date(segEnd));
+      const text = isRun
+        ? `Running: ${startStr} - ${endStr} (1m 0s)`
+        : `Idle: ${startStr} - ${endStr} (29m)`;
+
+      segments.push(
+        html`
+          <div
+            class="timeline-segment"
+            style="flex: 1; height: 100%; background: ${isRun ? "var(--success-color, #86efac)" : "transparent"}; margin: 0 1px; cursor: pointer;"
+            title=${text}
+            @click=${() => this._selectTimelineSegment(text)}
+          ></div>
+        `
       );
     }
-    return ticks;
+    return segments;
   }
 
   _renderFlushGuideModal() {
@@ -1533,6 +1585,19 @@ class PassableApplianceCard extends LitElement {
       }
       .pill-btn:hover { opacity: 1; }
       .pill-value { font-weight: 600; font-size: 0.95rem; color: var(--primary-text-color); white-space: nowrap; }
+
+      /* TIMELINE TRACK & INTERACTIVE POINTER HOVER */
+      .timeline-track {
+        cursor: pointer;
+      }
+      .timeline-segment {
+        cursor: pointer !important;
+        transition: opacity 0.15s ease, filter 0.15s ease;
+      }
+      .timeline-segment:hover {
+        opacity: 0.75;
+        filter: brightness(1.3);
+      }
 
       /* SMART HOSE RING SLIDER */
       .ring-container { display: flex; justify-content: center; align-items: center; margin-bottom: 16px; }
