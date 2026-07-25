@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.0
+ * Version: 1.0.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -12,7 +12,7 @@
  *  - Smart Hose Timer
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -34,10 +34,7 @@ class PassableApplianceCard extends LitElement {
       _popup: { state: true },
       _popupOven: { state: true },
       _ovenTargetTemp: { state: true },
-      _showFlushGuide: { state: true },
-      _showRecircSettings: { state: true },
       _durationMinutes: { state: true },
-      _selectedSegmentText: { state: true },
     };
   }
 
@@ -46,10 +43,7 @@ class PassableApplianceCard extends LitElement {
     this._popup = null;
     this._popupOven = null;
     this._ovenTargetTemp = null;
-    this._showFlushGuide = false;
-    this._showRecircSettings = false;
     this._durationMinutes = 15;
-    this._selectedSegmentText = "Tap timeline for details";
     this._cardId = `pac-${Math.random().toString(36).substr(2, 9)}`;
   }
 
@@ -100,10 +94,6 @@ class PassableApplianceCard extends LitElement {
           { status_entity: `binary_sensor.${p}_cooktop_status_right_rear_on`, power_entity: `sensor.${p}_cooktop_status_right_rear_power_pct` },
           { status_entity: `binary_sensor.${p}_cooktop_status_right_front_on`, power_entity: `sensor.${p}_cooktop_status_right_front_power_pct` },
         ],
-        sync_entities: {
-          left_front: `binary_sensor.${p}_cooktop_status_left_front_synchronized`,
-          left_rear: `binary_sensor.${p}_cooktop_status_left_rear_synchronized`,
-        },
       };
     }
 
@@ -143,10 +133,10 @@ class PassableApplianceCard extends LitElement {
     if (this.config.valve_entity || this.config.bhyve_mode !== undefined) {
       return "smart_hose_timer";
     }
-    if (this.config.washer || this.config.dryer) {
+    if (this.config.washer || this.config.dryer || this.config.washer_status || this.config.dryer_status) {
       return "laundry";
     }
-    if (this.config.cooktop || this.config.oven) {
+    if (this.config.cooktop || this.config.oven || this.config.upper_control) {
       return "induction_range";
     }
     if (this.config.fridge_control || this.config.freezer_control) {
@@ -217,7 +207,6 @@ class PassableApplianceCard extends LitElement {
     const freezerTemp = this._getEntity(c.freezer_temp_current);
     const doorStatus = this._getEntity(c.door_status);
     const waterFilter = this._getEntity(c.water_filter_status);
-    const hotWaterInUse = this._getEntity(c.hot_water_in_use);
     const hotWaterSetTemp = this._getEntity(c.hot_water_set_temp);
     const hotWaterCurrentTemp = this._getEntity(c.hot_water_status_current_temp);
     const hotWaterStatus = this._getEntity(c.hot_water_status);
@@ -259,7 +248,6 @@ class PassableApplianceCard extends LitElement {
       </div>
 
       <div class="card-content">
-        <!-- Door Warning Banner -->
         ${isOpen
           ? html`
               <div class="alert-banner warning">
@@ -269,7 +257,6 @@ class PassableApplianceCard extends LitElement {
             `
           : ""}
 
-        <!-- Temp Zones Grid -->
         <div class="zones-grid">
           <div class="zone-card" @click=${() => (this._popup = "fridge")}>
             <div class="zone-header">
@@ -294,7 +281,6 @@ class PassableApplianceCard extends LitElement {
           </div>
         </div>
 
-        <!-- Hot Water Dispenser Section -->
         ${c.hot_water_status || c.hot_water_set_temp
           ? html`
               <div class="dispenser-section ${isHeating ? "heating" : isHotWaterReady ? "ready" : ""}">
@@ -328,7 +314,6 @@ class PassableApplianceCard extends LitElement {
             `
           : ""}
 
-        <!-- Auxiliary Status Bar -->
         <div class="aux-grid">
           ${c.water_filter_status
             ? html`
@@ -363,7 +348,14 @@ class PassableApplianceCard extends LitElement {
   // ==========================================
   _renderInductionRange() {
     const c = this.config;
-    const oven = c.oven || {};
+    const oven = c.oven || {
+      upper_control: c.upper_control,
+      lower_control: c.lower_control,
+      upper_raw_temp: c.upper_raw_temp,
+      lower_raw_temp: c.lower_raw_temp,
+      upper_state_entity: c.upper_state_entity,
+      lower_state_entity: c.lower_state_entity,
+    };
     const cooktop = c.cooktop || { burners: [] };
 
     const upperState = this._getEntity(oven.upper_state_entity).state;
@@ -407,31 +399,33 @@ class PassableApplianceCard extends LitElement {
       </div>
 
       <div class="card-content">
-        <!-- Cooktop Section -->
-        <div class="section-title">
-          <ha-icon icon="mdi:checkbox-blank-circle-outline"></ha-icon>
-          <span>Cooktop Elements</span>
-        </div>
-
-        <div class="cooktop-grid">
-          ${burners.map((b, idx) => {
-            const isOn = b.status.state === "on" || b.status.state === "true";
-            const powerVal = b.power.state !== "unavailable" ? b.power.state : null;
-            return html`
-              <div class="burner-card ${isOn ? "on" : "off"}">
-                <div class="burner-ring">
-                  <ha-icon icon="mdi:fire"></ha-icon>
-                </div>
-                <div class="burner-info">
-                  <span class="burner-name">Burner ${idx + 1}</span>
-                  <span class="burner-status">${isOn ? (powerVal ? `${powerVal}%` : "ON") : "OFF"}</span>
-                </div>
+        ${burners.length > 0
+          ? html`
+              <div class="section-title">
+                <ha-icon icon="mdi:checkbox-blank-circle-outline"></ha-icon>
+                <span>Cooktop Elements</span>
               </div>
-            `;
-          })}
-        </div>
 
-        <!-- Oven Section -->
+              <div class="cooktop-grid">
+                ${burners.map((b, idx) => {
+                  const isOn = b.status.state === "on" || b.status.state === "true";
+                  const powerVal = b.power.state !== "unavailable" ? b.power.state : null;
+                  return html`
+                    <div class="burner-card ${isOn ? "on" : "off"}">
+                      <div class="burner-ring">
+                        <ha-icon icon="mdi:fire"></ha-icon>
+                      </div>
+                      <div class="burner-info">
+                        <span class="burner-name">Burner ${idx + 1}</span>
+                        <span class="burner-status">${isOn ? (powerVal ? `${powerVal}%` : "ON") : "OFF"}</span>
+                      </div>
+                    </div>
+                  `;
+                })}
+              </div>
+            `
+          : ""}
+
         ${oven.upper_control || oven.lower_control
           ? html`
               <div class="section-title" style="margin-top: 16px;">
@@ -480,8 +474,16 @@ class PassableApplianceCard extends LitElement {
   // ==========================================
   _renderLaundry() {
     const c = this.config;
-    const washerConfig = c.washer || {};
-    const dryerConfig = c.dryer || {};
+    const washerConfig = c.washer || {
+      current_status: c.washer_status,
+      operation: c.washer_operation,
+      remaining_time: c.washer_remaining_time,
+    };
+    const dryerConfig = c.dryer || {
+      current_status: c.dryer_status,
+      operation: c.dryer_operation,
+      remaining_time: c.dryer_remaining_time,
+    };
 
     const washerStatus = this._getEntity(washerConfig.current_status);
     const washerOp = this._getEntity(washerConfig.operation);
@@ -492,8 +494,8 @@ class PassableApplianceCard extends LitElement {
     const dryerTime = this._getEntity(dryerConfig.remaining_time);
 
     const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
-    const isWasherActive = activeStates.includes(washerStatus.state.toLowerCase());
-    const isDryerActive = activeStates.includes(dryerStatus.state.toLowerCase());
+    const isWasherActive = activeStates.includes((washerStatus.state || "").toLowerCase());
+    const isDryerActive = activeStates.includes((dryerStatus.state || "").toLowerCase());
 
     let chipLabel = "IDLE";
     let chipClass = "idle";
@@ -525,7 +527,6 @@ class PassableApplianceCard extends LitElement {
 
       <div class="card-content">
         <div class="laundry-grid">
-          <!-- Washer Column -->
           <div class="laundry-card ${isWasherActive ? "active" : ""}">
             <div class="laundry-icon-wrapper ${isWasherActive ? "spinning" : ""}">
               <ha-icon icon="mdi:washing-machine"></ha-icon>
@@ -538,7 +539,6 @@ class PassableApplianceCard extends LitElement {
             </div>
           </div>
 
-          <!-- Dryer Column -->
           <div class="laundry-card ${isDryerActive ? "active" : ""}">
             <div class="laundry-icon-wrapper ${isDryerActive ? "tumbling" : ""}">
               <ha-icon icon="mdi:tumble-dryer"></ha-icon>
@@ -563,14 +563,8 @@ class PassableApplianceCard extends LitElement {
     const mainEntityId = c.entity || "water_heater.water_heater";
     const stateObj = this.hass.states[mainEntityId] || { state: "unavailable", attributes: {} };
 
-    const baseName = mainEntityId.split(".")[1] || "water_heater";
-    const getSensor = (key, defaultVal) => {
-      if (c.sensors && c.sensors[key]) return this._getEntity(c.sensors[key]);
-      return this._getEntity(`sensor.${baseName}_${key}`);
-    };
-
-    const flowRate = getSensor("water_flow_rate", "0");
-    const gasUsage = getSensor("gas_consumption_rate", "0");
+    const flowRate = c.flow_rate_sensor ? this._getEntity(c.flow_rate_sensor) : { state: "0" };
+    const gasUsage = c.gas_usage_sensor ? this._getEntity(c.gas_usage_sensor) : { state: "0" };
     const targetTemp = stateObj.attributes.temperature ?? "--";
     const currentTemp = stateObj.attributes.current_temperature ?? targetTemp;
 
@@ -591,7 +585,6 @@ class PassableApplianceCard extends LitElement {
       </div>
 
       <div class="card-content">
-        <!-- Main Circular Temp Hero -->
         <div class="hero-temp-card">
           <div class="hero-temp-value">${currentTemp}°</div>
           <div class="hero-temp-sub">Target Setpoint: ${targetTemp}°</div>
@@ -611,16 +604,23 @@ class PassableApplianceCard extends LitElement {
           </div>
         </div>
 
-        <!-- Telemetry Gauges -->
         <div class="aux-grid" style="margin-top: 12px;">
-          <div class="aux-item">
-            <ha-icon icon="mdi:water-pump"></ha-icon>
-            <span>Flow: ${flowRate.state} GPM</span>
-          </div>
-          <div class="aux-item">
-            <ha-icon icon="mdi:fire"></ha-icon>
-            <span>Gas: ${gasUsage.state} BTU/h</span>
-          </div>
+          ${c.flow_rate_sensor
+            ? html`
+                <div class="aux-item">
+                  <ha-icon icon="mdi:water-pump"></ha-icon>
+                  <span>Flow: ${flowRate.state} GPM</span>
+                </div>
+              `
+            : ""}
+          ${c.gas_usage_sensor
+            ? html`
+                <div class="aux-item">
+                  <ha-icon icon="mdi:fire"></ha-icon>
+                  <span>Gas: ${gasUsage.state} BTU/h</span>
+                </div>
+              `
+            : ""}
         </div>
       </div>
     `;
@@ -661,7 +661,6 @@ class PassableApplianceCard extends LitElement {
       </div>
 
       <div class="card-content">
-        <!-- Duration Selector & Control -->
         <div class="hose-control-card">
           <div class="hose-timer-display">
             <span class="num">${this._durationMinutes}</span>
@@ -696,7 +695,6 @@ class PassableApplianceCard extends LitElement {
           </div>
         </div>
 
-        <!-- Telemetry Badges -->
         <div class="aux-grid" style="margin-top: 12px;">
           ${battery.state !== "unavailable"
             ? html`
@@ -735,7 +733,6 @@ class PassableApplianceCard extends LitElement {
         entity_id: c.valve_entity,
         minutes: this._durationMinutes,
       }).catch(() => {
-        // Fallback to standard valve service
         this.hass.callService("valve", "open_cover", { entity_id: c.valve_entity });
       });
     } else if (c.valve_entity) {
@@ -753,9 +750,6 @@ class PassableApplianceCard extends LitElement {
     }
   }
 
-  // ==========================================
-  // POPUP MODALS
-  // ==========================================
   _renderPopups() {
     if (!this._popup && !this._popupOven) return html``;
 
@@ -777,9 +771,6 @@ class PassableApplianceCard extends LitElement {
     `;
   }
 
-  // ==========================================
-  // STYLES
-  // ==========================================
   static get styles() {
     return css`
       :host {
@@ -1148,28 +1139,17 @@ class PassableApplianceCard extends LitElement {
 // ==========================================
 class PassableApplianceCardEditor extends LitElement {
   static get properties() {
-    return { hass: {}, config: {} };
+    return {
+      hass: {},
+      config: {},
+    };
   }
 
   setConfig(config) {
-    this.config = config;
+    this.config = config || {};
   }
 
-  _valueChanged(ev) {
-    if (!this.config || !this.hass) return;
-    const target = ev.target;
-    const configValue = target.configValue;
-    const newValue = ev.detail && ev.detail.value !== undefined ? ev.detail.value : (target.checked !== undefined ? target.checked : target.value);
-
-    if (this.config[configValue] === newValue) return;
-
-    const newConfig = { ...this.config };
-    if (newValue === "" || newValue === undefined || newValue === null) {
-      delete newConfig[configValue];
-    } else {
-      newConfig[configValue] = newValue;
-    }
-
+  _updateConfig(newConfig) {
     this.config = newConfig;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
@@ -1178,42 +1158,421 @@ class PassableApplianceCardEditor extends LitElement {
         composed: true,
       })
     );
+    this.requestUpdate();
+  }
+
+  _onFieldChange(ev) {
+    if (!this.config) return;
+    const target = ev.target;
+    const key = target.configValue || target.getAttribute("configValue");
+    if (!key) return;
+
+    let val = ev.detail && ev.detail.value !== undefined
+      ? ev.detail.value
+      : (target.checked !== undefined ? target.checked : target.value);
+
+    const newConfig = { ...this.config };
+    if (val === "" || val === undefined || val === null) {
+      delete newConfig[key];
+    } else {
+      newConfig[key] = val;
+    }
+    this._updateConfig(newConfig);
+  }
+
+  _onSelectType(ev) {
+    const val = ev.target.value;
+    const newConfig = { ...this.config, appliance_type: val };
+    this._updateConfig(newConfig);
+  }
+
+  _getApplianceType() {
+    return this.config.appliance_type || "auto";
   }
 
   render() {
     if (!this.hass || !this.config) return html``;
 
+    const applianceType = this._getApplianceType();
+
     return html`
-      <div class="card-config" style="display: flex; flex-direction: column; gap: 12px; padding: 10px;">
-        <ha-textfield
-          label="Card Title"
-          .value=${this.config.title || ""}
-          .configValue=${"title"}
-          @input=${this._valueChanged}
-        ></ha-textfield>
+      <div class="editor-container">
+        <!-- Common Title Input -->
+        <div class="form-group">
+          <label class="form-label">Card Title</label>
+          <ha-textfield
+            label="Title (Optional)"
+            .value=${this.config.title || ""}
+            .configValue=${"title"}
+            @input=${this._onFieldChange}
+          ></ha-textfield>
+        </div>
 
-        <ha-select
-          label="Appliance Type"
-          .value=${this.config.appliance_type || "auto"}
-          .configValue=${"appliance_type"}
-          @selected=${this._valueChanged}
-          @change=${this._valueChanged}
-        >
-          <mwc-list-item value="auto">Auto-detect</mwc-list-item>
-          <mwc-list-item value="refrigerator">Refrigerator</mwc-list-item>
-          <mwc-list-item value="induction_range">Induction Range & Oven</mwc-list-item>
-          <mwc-list-item value="laundry">Laundry (Washer & Dryer)</mwc-list-item>
-          <mwc-list-item value="water_heater">Water Heater</mwc-list-item>
-          <mwc-list-item value="smart_hose_timer">Smart Hose Timer</mwc-list-item>
-        </ha-select>
+        <!-- Appliance Type Selector -->
+        <div class="form-group">
+          <label class="form-label">Appliance Type</label>
+          <select
+            class="custom-select"
+            .value=${applianceType}
+            @change=${this._onSelectType}
+          >
+            <option value="auto">Auto-detect</option>
+            <option value="refrigerator">Refrigerator</option>
+            <option value="induction_range">Induction Range & Oven</option>
+            <option value="laundry">Laundry (Washer & Dryer)</option>
+            <option value="water_heater">Water Heater</option>
+            <option value="smart_hose_timer">Smart Hose Timer</option>
+          </select>
+        </div>
 
-        <ha-textfield
-          label="Device Prefix (Optional for auto entity discovery)"
-          .value=${this.config.device_prefix || ""}
-          .configValue=${"device_prefix"}
-          @input=${this._valueChanged}
-        ></ha-textfield>
+        <!-- Device Prefix Field (Useful for Refrigerator & Induction Range) -->
+        ${applianceType === "auto" || applianceType === "refrigerator" || applianceType === "induction_range"
+          ? html`
+              <div class="form-group">
+                <label class="form-label">Device Prefix (Optional Shortcut)</label>
+                <ha-textfield
+                  label="Device Prefix (e.g. lg_fridge or ge_range)"
+                  .value=${this.config.device_prefix || ""}
+                  .configValue=${"device_prefix"}
+                  @input=${this._onFieldChange}
+                ></ha-textfield>
+                <span class="form-help">Automatically populates entity controls matching entity prefix.</span>
+              </div>
+            `
+          : ""}
+
+        <!-- Appliance Specific Forms -->
+        ${applianceType === "refrigerator"
+          ? this._renderRefrigeratorEditor()
+          : applianceType === "induction_range"
+          ? this._renderInductionRangeEditor()
+          : applianceType === "laundry"
+          ? this._renderLaundryEditor()
+          : applianceType === "water_heater"
+          ? this._renderWaterHeaterEditor()
+          : applianceType === "smart_hose_timer"
+          ? this._renderSmartHoseTimerEditor()
+          : ""}
       </div>
+    `;
+  }
+
+  _renderRefrigeratorEditor() {
+    return html`
+      <div class="section-box">
+        <h3>Refrigerator Entities</h3>
+        
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
+          .value=${this.config.fridge_control || ""}
+          .configValue=${"fridge_control"}
+          .label=${"Fridge Control Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
+          .value=${this.config.freezer_control || ""}
+          .configValue=${"freezer_control"}
+          .label=${"Freezer Control Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.fridge_temp_current || ""}
+          .configValue=${"fridge_temp_current"}
+          .label=${"Fridge Current Temp Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.freezer_temp_current || ""}
+          .configValue=${"freezer_temp_current"}
+          .label=${"Freezer Current Temp Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: {} }}
+          .value=${this.config.door_status || ""}
+          .configValue=${"door_status"}
+          .label=${"Door Status Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "switch" } }}
+          .value=${this.config.ice_maker_control || ""}
+          .configValue=${"ice_maker_control"}
+          .label=${"Ice Maker Switch"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+      </div>
+    `;
+  }
+
+  _renderInductionRangeEditor() {
+    return html`
+      <div class="section-box">
+        <h3>Induction Range & Oven Entities</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
+          .value=${this.config.upper_control || ""}
+          .configValue=${"upper_control"}
+          .label=${"Upper Oven Control Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
+          .value=${this.config.lower_control || ""}
+          .configValue=${"lower_control"}
+          .label=${"Lower Oven Control Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.upper_raw_temp || ""}
+          .configValue=${"upper_raw_temp"}
+          .label=${"Upper Oven Temp Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.lower_raw_temp || ""}
+          .configValue=${"lower_raw_temp"}
+          .label=${"Lower Oven Temp Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+      </div>
+    `;
+  }
+
+  _renderLaundryEditor() {
+    return html`
+      <div class="section-box">
+        <h3>Washing Machine</h3>
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.washer_status || (this.config.washer && this.config.washer.current_status) || ""}
+          .configValue=${"washer_status"}
+          .label=${"Washer Current Status Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.washer_operation || (this.config.washer && this.config.washer.operation) || ""}
+          .configValue=${"washer_operation"}
+          .label=${"Washer Cycle Operation Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.washer_remaining_time || (this.config.washer && this.config.washer.remaining_time) || ""}
+          .configValue=${"washer_remaining_time"}
+          .label=${"Washer Remaining Time Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <h3 style="margin-top: 14px;">Tumble Dryer</h3>
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.dryer_status || (this.config.dryer && this.config.dryer.current_status) || ""}
+          .configValue=${"dryer_status"}
+          .label=${"Dryer Current Status Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.dryer_operation || (this.config.dryer && this.config.dryer.operation) || ""}
+          .configValue=${"dryer_operation"}
+          .label=${"Dryer Cycle Operation Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.dryer_remaining_time || (this.config.dryer && this.config.dryer.remaining_time) || ""}
+          .configValue=${"dryer_remaining_time"}
+          .label=${"Dryer Remaining Time Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+      </div>
+    `;
+  }
+
+  _renderWaterHeaterEditor() {
+    return html`
+      <div class="section-box">
+        <h3>Water Heater Entities</h3>
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "water_heater" } }}
+          .value=${this.config.entity || ""}
+          .configValue=${"entity"}
+          .label=${"Main Water Heater Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.flow_rate_sensor || ""}
+          .configValue=${"flow_rate_sensor"}
+          .label=${"Flow Rate Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.gas_usage_sensor || ""}
+          .configValue=${"gas_usage_sensor"}
+          .label=${"Gas Consumption Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+      </div>
+    `;
+  }
+
+  _renderSmartHoseTimerEditor() {
+    return html`
+      <div class="section-box">
+        <h3>Smart Hose Timer Entities</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["valve", "switch"] } }}
+          .value=${this.config.valve_entity || ""}
+          .configValue=${"valve_entity"}
+          .label=${"Zone Valve Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.battery_sensor || ""}
+          .configValue=${"battery_sensor"}
+          .label=${"Battery Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.signal_sensor || ""}
+          .configValue=${"signal_sensor"}
+          .label=${"Signal Strength Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.history_sensor || ""}
+          .configValue=${"history_sensor"}
+          .label=${"History / Last Watered Sensor (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <div class="form-row" style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between;">
+          <span>Enable B-hyve service mode</span>
+          <ha-switch
+            .checked=${this.config.bhyve_mode !== false}
+            .configValue=${"bhyve_mode"}
+            @change=${this._onFieldChange}
+          ></ha-switch>
+        </div>
+      </div>
+    `;
+  }
+
+  static get styles() {
+    return css`
+      .editor-container {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 8px 0;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .form-label {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--primary-text-color, #ffffff);
+      }
+
+      .form-help {
+        font-size: 0.75rem;
+        color: var(--secondary-text-color, #a1a1aa);
+      }
+
+      .custom-select {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--card-background-color, #242426);
+        color: var(--primary-text-color, #ffffff);
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.15));
+        font-size: 0.95rem;
+        outline: none;
+        cursor: pointer;
+      }
+
+      .custom-select:focus {
+        border-color: var(--primary-color, #3b82f6);
+      }
+
+      .section-box {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 12px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .section-box h3 {
+        margin: 0 0 4px 0;
+        font-size: 0.95rem;
+        color: var(--primary-color, #60a5fa);
+      }
+
+      ha-textfield, ha-selector {
+        width: 100%;
+      }
     `;
   }
 }

@@ -1,7 +1,7 @@
 # Passable Appliance Card
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-v1.0.0-blue.svg)](https://github.com/GBear09/passable-appliance-card/releases)
+[![version](https://img.shields.io/badge/version-v1.0.1-blue.svg)](https://github.com/GBear09/passable-appliance-card/releases)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A dynamic, universal Home Assistant Lovelace dashboard card for monitoring and controlling your household appliances.
@@ -38,7 +38,7 @@ Supports 5 primary appliance types out of the box:
 1. Download `passable-appliance-card.js` from the [latest release](https://github.com/GBear09/passable-appliance-card/releases).
 2. Copy `passable-appliance-card.js` to your Home Assistant `www` folder (`/config/www/passable-appliance-card.js`).
 3. Add the resource reference in **Settings -> Dashboards -> Resources**:
-   - **Url**: `/local/passable-appliance-card.js?v=1.0.0`
+   - **Url**: `/local/passable-appliance-card.js?v=1.0.1`
    - **Resource Type**: `JavaScript Module`
 
 ---
@@ -69,14 +69,12 @@ device_prefix: ge_profile_range
 type: custom:passable-appliance-card
 title: Laundry Room
 appliance_type: laundry
-washer:
-  current_status: sensor.washer_run_state
-  operation: sensor.washer_wash_cycle
-  remaining_time: sensor.washer_initial_time_remaining
-dryer:
-  current_status: sensor.dryer_run_state
-  operation: sensor.dryer_dry_cycle
-  remaining_time: sensor.dryer_initial_time_remaining
+washer_status: sensor.washer_run_state
+washer_operation: sensor.washer_wash_cycle
+washer_remaining_time: sensor.washer_initial_time_remaining
+dryer_status: sensor.dryer_run_state
+dryer_operation: sensor.dryer_dry_cycle
+dryer_remaining_time: sensor.dryer_initial_time_remaining
 ```
 
 ### 4. Water Heater Example
@@ -111,8 +109,6 @@ bhyve_mode: true
 | `appliance_type` | string | `auto` | Appliance layout mode: `auto`, `refrigerator`, `induction_range`, `laundry`, `water_heater`, `smart_hose_timer` |
 | `device_prefix` | string | Optional | Shared prefix string for entity auto-discovery |
 | `entity` | string | Optional | Primary entity ID (e.g. `water_heater.xxx`) |
-| `washer` | object | Optional | Washer entity map (`current_status`, `operation`, `remaining_time`) |
-| `dryer` | object | Optional | Dryer entity map (`current_status`, `operation`, `remaining_time`) |
 | `valve_entity` | string | Optional | Valve entity ID for hose timer |
 | `bhyve_mode` | boolean | `true` | Enable B-hyve specific watering service integration |
 
