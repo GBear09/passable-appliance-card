@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.11
+ * Version: 1.0.12
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -10,10 +10,10 @@
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
- *  5. Smart Hose Timer (Full Parameter Setup + Interactive SVG Ring Slider + Start/Stop Watering Button + Gear Drawer with Smart Watering & Rain Delay Toggles + Battery/History Telemetry + Theme Colors)
+ *  5. Smart Hose Timer (Side-by-Side Header Chips + Legible Theme Contrast Start Watering Button + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer with Smart Watering & Rain Delay)
  */
 
-const CARD_VERSION = "1.0.11";
+const CARD_VERSION = "1.0.12";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1259,7 +1259,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 5. SMART HOSE TIMER (FULL PARAMETERS & THEME COLORS)
+  // 5. SMART HOSE TIMER (FULL PARAMETERS & THEME CONTRAST)
   // ==========================================
   _renderSmartHoseTimer() {
     const c = this.config;
@@ -1305,10 +1305,12 @@ class PassableApplianceCard extends LitElement {
             </h1>
             <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
           </div>
-          <div class="header-right">
+
+          <!-- Side-by-Side Horizontal Chips with Gap -->
+          <div class="header-right" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
             ${battery && battery.state !== "unavailable"
               ? html`
-                  <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer; margin-right:6px;">
+                  <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer;">
                     <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
                     ${battery.state}%
                   </div>
@@ -1343,13 +1345,18 @@ class PassableApplianceCard extends LitElement {
 
           <div class="control-group m3-card" style="margin-top: 14px;">
             <div class="controls-container" style="display:flex; gap:8px;">
-              <button class="recirc-button ${isOpen ? "active" : ""}" @click=${() => this._toggleHoseWatering()} style="flex:1; padding:12px 20px; border-radius:24px; border:none; background:${isOpen ? "var(--error-color, #ef4444)" : "var(--primary-color)"}; color:white; font-weight:500; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; text-transform:uppercase; letter-spacing:0.05em;">
-                <ha-icon icon="${isOpen ? "mdi:water-off" : "mdi:water"}"></ha-icon>
-                <span class="button-content">
-                  <span class="main-label">${isOpen ? "Stop Watering" : "Start Watering"}</span>
+              <!-- Legible High-Contrast Button Text (Dark Green/Black for Theme Light Green Backgrounds) -->
+              <button
+                class="recirc-button ${isOpen ? "active" : ""}"
+                @click=${() => this._toggleHoseWatering()}
+                style="flex:1; padding:12px 20px; border-radius:24px; border:none; background:${isOpen ? "var(--error-color, #ef4444)" : "var(--primary-color, #86efac)"}; color: #0a291c; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; text-transform:uppercase; letter-spacing:0.05em;"
+              >
+                <ha-icon icon="${isOpen ? "mdi:water-off" : "mdi:water"}" style="color: #0a291c; --mdc-icon-size:22px;"></ha-icon>
+                <span class="button-content" style="color: #0a291c; display:flex; flex-direction:column; align-items:flex-start;">
+                  <span class="main-label" style="color: #0a291c; font-weight:800; font-size:0.95rem;">${isOpen ? "STOP WATERING" : "START WATERING"}</span>
                   ${!isOpen
-                    ? html`<span class="sub-label">• ${lastStart !== '--' ? lastStart : `Set: ${this._manualRuntime}m`}</span>`
-                    : html`<span class="sub-label">• ${currentRuntime} min elapsed</span>`}
+                    ? html`<span class="sub-label" style="color: #0a291c; opacity:0.85; font-size:0.75rem; text-transform:none;">• ${lastStart !== '--' ? lastStart : `Set: ${this._manualRuntime}m`}</span>`
+                    : html`<span class="sub-label" style="color: #0a291c; opacity:0.85; font-size:0.75rem; text-transform:none;">• ${currentRuntime} min elapsed</span>`}
                 </span>
               </button>
               <button class="settings-btn ${this._showHoseSettings ? "active" : ""}" @click=${() => (this._showHoseSettings = !this._showHoseSettings)}>
@@ -1387,21 +1394,22 @@ class PassableApplianceCard extends LitElement {
               : ""}
           </div>
 
+          <!-- 24px Pill Rounded Next & Last Blocks -->
           <div class="stats-row" style="margin-top: 14px; display: flex; gap: 12px;">
-            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px; cursor:pointer;" @click=${() => this._showMoreInfo(c.next_watering_sensor)}>
-              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--secondary-text-color);">
+            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.15)); padding:14px 16px; border-radius:24px; cursor:pointer;" @click=${() => this._showMoreInfo(c.next_watering_sensor)}>
+              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.9rem; color:var(--secondary-text-color);">
                 <ha-icon icon="mdi:calendar-clock"></ha-icon> <span>Next</span>
               </div>
-              <div style="font-weight:bold; margin-top:4px; font-size:0.85rem;">
-                ${nextWatering && nextWatering.state !== "unavailable" ? this._formatShortTime(new Date(nextWatering.state)) : "Ready"}
+              <div style="font-weight:bold; margin-top:4px; font-size:0.9rem;">
+                ${nextWatering && nextWatering.state !== "unavailable" ? this._formatShortTime(new Date(nextWatering.state)) : "Unknown"}
               </div>
             </div>
 
-            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.1)); padding:10px; border-radius:12px; cursor:pointer;" @click=${() => this._showMoreInfo(c.history_sensor)}>
-              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--secondary-text-color);">
+            <div class="stat-inline" style="flex:1; background:var(--secondary-background-color, rgba(128,128,128,0.15)); padding:14px 16px; border-radius:24px; cursor:pointer;" @click=${() => this._showMoreInfo(c.history_sensor)}>
+              <div class="stat-inline-header" style="display:flex; align-items:center; gap:6px; font-size:0.9rem; color:var(--secondary-text-color);">
                 <ha-icon icon="mdi:history"></ha-icon> <span>Last</span>
               </div>
-              <div style="font-weight:bold; margin-top:4px; font-size:0.85rem; color:var(--primary-color);">
+              <div style="font-weight:bold; margin-top:4px; font-size:0.9rem; color:var(--info-color, #3182ce);">
                 ${history && history.state !== "unavailable" ? history.state : `${lastRunTime !== '--' ? lastRunTime : '31 min'} • ${lastGallons !== '--' ? lastGallons : '187 gal'}`}
               </div>
             </div>
