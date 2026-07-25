@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.12
+ * Version: 1.0.13
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -10,10 +10,10 @@
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
- *  5. Smart Hose Timer (Side-by-Side Header Chips + Legible Theme Contrast Start Watering Button + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer with Smart Watering & Rain Delay)
+ *  5. Smart Hose Timer (Side-by-Side Battery Icon & % Chip + Identical Recirc-Button Text Style & Format + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer with Smart Watering & Rain Delay)
  */
 
-const CARD_VERSION = "1.0.12";
+const CARD_VERSION = "1.0.13";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1259,7 +1259,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 5. SMART HOSE TIMER (FULL PARAMETERS & THEME CONTRAST)
+  // 5. SMART HOSE TIMER (EXACT WATER HEATER RECIRC-BUTTON MATCH + SIDE-BY-SIDE BATTERY CHIP)
   // ==========================================
   _renderSmartHoseTimer() {
     const c = this.config;
@@ -1306,13 +1306,13 @@ class PassableApplianceCard extends LitElement {
             <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
           </div>
 
-          <!-- Side-by-Side Horizontal Chips with Gap -->
+          <!-- Side-by-Side Horizontal Chips with inline-flex gap -->
           <div class="header-right" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
             ${battery && battery.state !== "unavailable"
               ? html`
                   <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer;">
-                    <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
-                    ${battery.state}%
+                    <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px;"></ha-icon>
+                    <span>${battery.state}%</span>
                   </div>
                 `
               : ""}
@@ -1345,18 +1345,17 @@ class PassableApplianceCard extends LitElement {
 
           <div class="control-group m3-card" style="margin-top: 14px;">
             <div class="controls-container" style="display:flex; gap:8px;">
-              <!-- Legible High-Contrast Button Text (Dark Green/Black for Theme Light Green Backgrounds) -->
+              <!-- Standard Recirc-Button Match (Exact Text Style & Format as Water Heater Button) -->
               <button
                 class="recirc-button ${isOpen ? "active" : ""}"
                 @click=${() => this._toggleHoseWatering()}
-                style="flex:1; padding:12px 20px; border-radius:24px; border:none; background:${isOpen ? "var(--error-color, #ef4444)" : "var(--primary-color, #86efac)"}; color: #0a291c; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; text-transform:uppercase; letter-spacing:0.05em;"
               >
-                <ha-icon icon="${isOpen ? "mdi:water-off" : "mdi:water"}" style="color: #0a291c; --mdc-icon-size:22px;"></ha-icon>
-                <span class="button-content" style="color: #0a291c; display:flex; flex-direction:column; align-items:flex-start;">
-                  <span class="main-label" style="color: #0a291c; font-weight:800; font-size:0.95rem;">${isOpen ? "STOP WATERING" : "START WATERING"}</span>
+                <ha-icon icon="${isOpen ? "mdi:water-off" : "mdi:water"}"></ha-icon>
+                <span class="button-content">
+                  <span class="main-label">${isOpen ? "STOP WATERING" : "START WATERING"}</span>
                   ${!isOpen
-                    ? html`<span class="sub-label" style="color: #0a291c; opacity:0.85; font-size:0.75rem; text-transform:none;">• ${lastStart !== '--' ? lastStart : `Set: ${this._manualRuntime}m`}</span>`
-                    : html`<span class="sub-label" style="color: #0a291c; opacity:0.85; font-size:0.75rem; text-transform:none;">• ${currentRuntime} min elapsed</span>`}
+                    ? html`<span class="sub-label">• ${lastStart !== '--' ? lastStart : `Set: ${this._manualRuntime}m`}</span>`
+                    : html`<span class="sub-label">• ${currentRuntime} min elapsed</span>`}
                 </span>
               </button>
               <button class="settings-btn ${this._showHoseSettings ? "active" : ""}" @click=${() => (this._showHoseSettings = !this._showHoseSettings)}>
@@ -1501,6 +1500,7 @@ class PassableApplianceCard extends LitElement {
       .status-chip {
         font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 12px; text-transform: uppercase;
         background: rgba(128, 128, 128, 0.15); color: var(--secondary-text-color);
+        display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; flex-direction: row;
       }
       .status-chip.idle { background: rgba(128, 128, 128, 0.15); color: var(--secondary-text-color); }
       .status-chip.active-alert, .status-chip.heating { background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15); color: var(--error-color, #f44336); }
@@ -1625,6 +1625,7 @@ class PassableApplianceCard extends LitElement {
       }
       .recirc-button.active { background-color: var(--success-color, #4caf50); }
       .button-content { display: flex; flex-direction: column; align-items: flex-start; }
+      .main-label { font-weight: 600; }
       .sub-label { font-size: 0.7em; opacity: 0.8; text-transform: none; font-weight: 400; }
       .settings-btn { background: transparent; border: 1px solid var(--divider-color, #e0e0e0); color: var(--secondary-text-color); width: 48px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
       .settings-btn.active { background: var(--secondary-background-color); color: var(--primary-color); border-color: var(--primary-color); }
