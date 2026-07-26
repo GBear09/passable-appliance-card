@@ -94,18 +94,18 @@ class LaundryStatusCard extends LitElement {
     return html`
       <ha-card>
         <div class="header">
-          <div class="header-left">
-            <h1 class="title">
-              <ha-icon
-                icon="mdi:washing-machine"
-                style="margin-right:8px; color: var(--primary-color);"
-              ></ha-icon>
-              ${this.config.title || "Laundry"}
-            </h1>
+          <h1 class="title">
+            <ha-icon
+              icon="mdi:washing-machine"
+              style="margin-right:8px; color: var(--primary-color);"
+            ></ha-icon>
+            ${this.config.title || "Laundry"}
+          </h1>
+          <div class="header-subtitle-row">
             <p class="subtitle">Washer & Dryer Status</p>
-          </div>
-          <div class="header-right">
-            <div class="status-chip ${chipClass}">${chipLabel}</div>
+            <div class="header-right">
+              <div class="status-chip ${chipClass}">${chipLabel}</div>
+            </div>
           </div>
         </div>
 
@@ -231,16 +231,12 @@ class LaundryStatusCard extends LitElement {
       .header {
         padding: 16px 16px 0;
         display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
+        flex-direction: column;
         border-bottom: 1px solid var(--divider-color, #e0e0e0);
         padding-bottom: 16px;
         margin-bottom: 16px;
         flex-shrink: 0;
-      }
-      .header-left {
-        display: flex;
-        flex-direction: column;
+        gap: 4px;
       }
       .title {
         font-size: 24px;
@@ -249,16 +245,32 @@ class LaundryStatusCard extends LitElement {
         letter-spacing: -0.01em;
         display: flex;
         align-items: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        width: 100%;
+      }
+      .header-subtitle-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        margin-top: 4px;
       }
       .subtitle {
         color: var(--secondary-text-color, #757575);
         font-size: 14px;
-        margin-top: 4px;
-        margin-bottom: 0;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .header-right {
         display: flex;
         align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
       }
 
       .status-chip {

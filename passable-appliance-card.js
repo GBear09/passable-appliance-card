@@ -13,7 +13,7 @@
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
  */
 
-const CARD_VERSION = "1.0.14";
+const CARD_VERSION = "1.0.15";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -407,15 +407,15 @@ class PassableApplianceCard extends LitElement {
     return html`
       <ha-card>
         <div class="header">
-          <div class="header-left">
-            <h1 class="title">
-              <ha-icon icon="mdi:fridge-outline" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || "Kitchen Refrigerator"}
-            </h1>
+          <h1 class="title">
+            <ha-icon icon="mdi:fridge-outline" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+            ${c.title || "Kitchen Refrigerator"}
+          </h1>
+          <div class="header-subtitle-row">
             <p class="subtitle">Food Storage & Dispenser</p>
-          </div>
-          <div class="header-right">
-            <div class="status-chip ${chipClass}">${chipLabel}</div>
+            <div class="header-right">
+              <div class="status-chip ${chipClass}">${chipLabel}</div>
+            </div>
           </div>
         </div>
 
@@ -639,15 +639,15 @@ class PassableApplianceCard extends LitElement {
     return html`
       <ha-card>
         <div class="header">
-          <div class="header-left">
-            <h1 class="title">
-              <ha-icon icon="mdi:stove" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || "Induction Range"}
-            </h1>
+          <h1 class="title">
+            <ha-icon icon="mdi:stove" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+            ${c.title || "Induction Range"}
+          </h1>
+          <div class="header-subtitle-row">
             <p class="subtitle">Cooking Zones & Ovens</p>
-          </div>
-          <div class="header-right">
-            <div class="status-chip ${chipClass}">${chipLabel}</div>
+            <div class="header-right">
+              <div class="status-chip ${chipClass}">${chipLabel}</div>
+            </div>
           </div>
         </div>
 
@@ -817,15 +817,15 @@ class PassableApplianceCard extends LitElement {
     return html`
       <ha-card>
         <div class="header">
-          <div class="header-left">
-            <h1 class="title">
-              <ha-icon icon="mdi:washing-machine" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || "Laundry"}
-            </h1>
+          <h1 class="title">
+            <ha-icon icon="mdi:washing-machine" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+            ${c.title || "Laundry"}
+          </h1>
+          <div class="header-subtitle-row">
             <p class="subtitle">Washer & Dryer Status</p>
-          </div>
-          <div class="header-right">
-            <div class="status-chip ${chipClass}">${chipLabel}</div>
+            <div class="header-right">
+              <div class="status-chip ${chipClass}">${chipLabel}</div>
+            </div>
           </div>
         </div>
 
@@ -939,18 +939,18 @@ class PassableApplianceCard extends LitElement {
     return html`
       <ha-card>
         <div class="header">
-          <div class="header-left">
-            <h1 class="title">
-              <ha-icon icon="mdi:water-boiler" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || attributes.friendly_name || "Water Heater"}
-            </h1>
+          <h1 class="title">
+            <ha-icon icon="mdi:water-boiler" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+            ${c.title || attributes.friendly_name || "Water Heater"}
+          </h1>
+          <div class="header-subtitle-row">
             <p class="subtitle">Tankless Water Heater</p>
-          </div>
-          <div class="header-right" style="display:flex; align-items:center; gap:8px;">
-            <div class="icon-btn-header" @click=${() => (this._showFlushGuide = true)} title="Flush Guide" style="cursor:pointer;">
-              <ha-icon icon="mdi:wrench-outline"></ha-icon>
+            <div class="header-right" style="display:flex; align-items:center; gap:8px;">
+              <div class="icon-btn-header" @click=${() => (this._showFlushGuide = true)} title="Flush Guide" style="cursor:pointer;">
+                <ha-icon icon="mdi:wrench-outline"></ha-icon>
+              </div>
+              <div class="status-chip ${isHeating ? "heating" : "idle"}">${isHeating ? "HEATING" : "IDLE"}</div>
             </div>
-            <div class="status-chip ${isHeating ? "heating" : "idle"}">${isHeating ? "HEATING" : "IDLE"}</div>
           </div>
         </div>
 
@@ -1298,25 +1298,25 @@ class PassableApplianceCard extends LitElement {
     return html`
       <ha-card>
         <div class="header">
-          <div class="header-left">
-            <h1 class="title">
-              <ha-icon icon="${isOpen ? "mdi:sprinkler" : "mdi:sprinkler-variant"}" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || "Smart Hose Timer"}
-            </h1>
-            <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
-          </div>
+          <h1 class="title">
+            <ha-icon icon="${isOpen ? "mdi:sprinkler" : "mdi:sprinkler-variant"}" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+            ${c.title || "Smart Hose Timer"}
+          </h1>
 
-          <!-- Side-by-Side Horizontal Chips -->
-          <div class="header-right" style="display: flex; flex-direction: row; align-items: center; gap: 8px; flex-shrink: 0;">
-            ${battery && battery.state !== "unavailable"
-              ? html`
-                  <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer;">
-                    <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px;"></ha-icon>
-                    <span>${battery.state}%</span>
-                  </div>
-                `
-              : ""}
-            <div class="status-chip ${isOpen ? "heating" : "idle"}">${isOpen ? "ACTIVE" : "IDLE"}</div>
+          <div class="header-subtitle-row">
+            <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
+            <!-- Side-by-Side Horizontal Chips -->
+            <div class="header-right" style="display: flex; flex-direction: row; align-items: center; gap: 8px; flex-shrink: 0;">
+              ${battery && battery.state !== "unavailable"
+                ? html`
+                    <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer;">
+                      <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px;"></ha-icon>
+                      <span>${battery.state}%</span>
+                    </div>
+                  `
+                : ""}
+              <div class="status-chip ${isOpen ? "heating" : "idle"}">${isOpen ? "ACTIVE" : "IDLE"}</div>
+            </div>
           </div>
         </div>
 
@@ -1488,19 +1488,20 @@ class PassableApplianceCard extends LitElement {
       .header {
         padding: 16px 16px 0;
         display: flex;
-        justify-content: space-between;
-        align-items: center;
+        flex-direction: column;
         border-bottom: 1px solid var(--divider-color, #e0e0e0);
         padding-bottom: 16px;
         margin-bottom: 16px;
-        gap: 12px;
+        gap: 4px;
       }
-      .header-left { display: flex; flex-direction: column; min-width: 0; flex: 1; }
       .title {
         font-size: 22px; font-weight: 500; margin: 0; display: flex; align-items: center;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
       }
-      .subtitle { color: var(--secondary-text-color, #757575); font-size: 14px; margin-top: 4px; margin-bottom: 0; white-space: nowrap; }
+      .header-subtitle-row {
+        display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; margin-top: 4px;
+      }
+      .subtitle { color: var(--secondary-text-color, #757575); font-size: 14px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .header-right { display: flex; flex-direction: row; align-items: center; gap: 8px; flex-shrink: 0; }
       .status-chip {
         font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 12px; text-transform: uppercase;

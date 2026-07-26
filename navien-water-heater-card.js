@@ -228,34 +228,34 @@ class NavienWaterHeaterCard extends LitElement {
       <ha-card>
         <!-- HEADER (UNCHANGED PER REQUEST) -->
         <div class="header">
-          <div class="header-left">
-            <h1 class="title">
-              <ha-icon
-                icon="mdi:water-boiler"
-                style="margin-right:8px; color: var(--primary-color);"
-              ></ha-icon>
-              ${this.config.name ||
-              attributes.friendly_name ||
-              "Navien Water Heater"}
-            </h1>
+          <h1 class="title">
+            <ha-icon
+              icon="mdi:water-boiler"
+              style="margin-right:8px; color: var(--primary-color);"
+            ></ha-icon>
+            ${this.config.name ||
+            attributes.friendly_name ||
+            "Navien Water Heater"}
+          </h1>
+          <div class="header-subtitle-row">
             <p class="subtitle">Tankless Water Heater</p>
-          </div>
-          <div class="header-right">
-            <div
-              class="icon-btn-header"
-              @click=${this._toggleFlushGuide}
-              title="Flush & Descale Guide"
-            >
-              <ha-icon icon="mdi:wrench-outline"></ha-icon>
-            </div>
-            <div
-              class="status-chip ${isError
-                ? "error"
-                : isHeating
-                ? "heating"
-                : "idle"}"
-            >
-              ${isError ? `ERR: ${errorCode}` : isHeating ? "HEATING" : "IDLE"}
+            <div class="header-right">
+              <div
+                class="icon-btn-header"
+                @click=${this._toggleFlushGuide}
+                title="Flush & Descale Guide"
+              >
+                <ha-icon icon="mdi:wrench-outline"></ha-icon>
+              </div>
+              <div
+                class="status-chip ${isError
+                  ? "error"
+                  : isHeating
+                  ? "heating"
+                  : "idle"}"
+              >
+                ${isError ? `ERR: ${errorCode}` : isHeating ? "HEATING" : "IDLE"}
+              </div>
             </div>
           </div>
         </div>
@@ -901,16 +901,12 @@ class NavienWaterHeaterCard extends LitElement {
       .header {
         padding: 16px 16px 0;
         display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
+        flex-direction: column;
         border-bottom: 1px solid var(--divider-color, #e0e0e0);
         padding-bottom: 16px;
         margin-bottom: 16px;
         flex-shrink: 0;
-      }
-      .header-left {
-        display: flex;
-        flex-direction: column;
+        gap: 4px;
       }
       .title {
         font-size: 24px;
@@ -919,17 +915,32 @@ class NavienWaterHeaterCard extends LitElement {
         letter-spacing: -0.01em;
         display: flex;
         align-items: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        width: 100%;
+      }
+      .header-subtitle-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        margin-top: 4px;
       }
       .subtitle {
         color: var(--secondary-text-color, #757575);
         font-size: 14px;
-        margin-top: 4px;
-        margin-bottom: 0;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .header-right {
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-shrink: 0;
       }
 
       .icon-btn-header {
