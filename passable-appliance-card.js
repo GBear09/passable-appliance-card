@@ -13,7 +13,7 @@
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
  */
 
-const CARD_VERSION = "1.0.17";
+const CARD_VERSION = "1.0.18";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -206,6 +206,68 @@ class PassableApplianceCard extends LitElement {
     this._selectedSegmentText = text;
   }
 
+  _getPowerEntity(applianceType, subType = null) {
+    const c = this.config || {};
+    const states = this.hass && this.hass.states ? this.hass.states : {};
+
+    if (applianceType === "water_heater") {
+      if (c.power_entity && states[c.power_entity]) return c.power_entity;
+      if (c.power_entity) return c.power_entity;
+      if (c.device_prefix && states[`switch.${c.device_prefix}_power`]) return `switch.${c.device_prefix}_power`;
+      if (states["switch.water_heater_power"]) return "switch.water_heater_power";
+      if (states["switch.navien_power"]) return "switch.navien_power";
+      return null;
+    }
+
+    if (applianceType === "laundry") {
+      if (subType === "washer") {
+        if (c.washer_power && states[c.washer_power]) return c.washer_power;
+        if (c.washer_power) return c.washer_power;
+        if (c.washer && c.washer.power_entity) return c.washer.power_entity;
+        if (c.device_prefix && states[`switch.${c.device_prefix}_washer_power`]) return `switch.${c.device_prefix}_washer_power`;
+        if (states["switch.washer_power"]) return "switch.washer_power";
+        return null;
+      }
+      if (subType === "dryer") {
+        if (c.dryer_power && states[c.dryer_power]) return c.dryer_power;
+        if (c.dryer_power) return c.dryer_power;
+        if (c.dryer && c.dryer.power_entity) return c.dryer.power_entity;
+        if (c.device_prefix && states[`switch.${c.device_prefix}_dryer_power`]) return `switch.${c.device_prefix}_dryer_power`;
+        if (states["switch.dryer_power"]) return "switch.dryer_power";
+        return null;
+      }
+      if (c.power_entity && states[c.power_entity]) return c.power_entity;
+      if (c.power_entity) return c.power_entity;
+      if (c.device_prefix && states[`switch.${c.device_prefix}_power`]) return `switch.${c.device_prefix}_power`;
+      return null;
+    }
+
+    if (c.power_entity && states[c.power_entity]) return c.power_entity;
+    if (c.power_entity) return c.power_entity;
+    if (c.device_prefix && states[`switch.${c.device_prefix}_power`]) return `switch.${c.device_prefix}_power`;
+    return null;
+  }
+
+  _renderPowerButton(entityId, extraClass = "") {
+    if (!entityId || !this.hass || !this.hass.states) return html``;
+    const stateObj = this._getEntity(entityId);
+    if (!stateObj || stateObj.state === "unavailable") return html``;
+    const isOn = stateObj.state === "on" || stateObj.state === "true";
+
+    return html`
+      <div
+        class="power-btn-header ${isOn ? "on" : "off"} ${extraClass}"
+        @click=${(e) => {
+          e.stopPropagation();
+          this._toggleEntity(entityId);
+        }}
+        title="Power: ${isOn ? "ON" : "OFF"} (Click to toggle)"
+      >
+        <ha-icon icon="mdi:power"></ha-icon>
+      </div>
+    `;
+  }
+
   _detectApplianceType() {
     const type = this.config.appliance_type;
     if (type && type !== "auto") {
@@ -374,6 +436,10 @@ class PassableApplianceCard extends LitElement {
   // ==========================================
   _renderRefrigerator() {
     const c = this.config;
+    const powerEntity = this._getPowerEntity("refrigerator");
+    const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
+
     const fridgeControl = this._getEntity(c.fridge_control);
     const freezerControl = this._getEntity(c.freezer_control);
     const fridgeTemp = this._getEntity(c.fridge_temp_current);
@@ -390,7 +456,10 @@ class PassableApplianceCard extends LitElement {
 
     let chipLabel = "NORMAL";
     let chipClass = "idle";
-    if (isOpen) {
+    if (isPowerOff) {
+      chipLabel = "POWER OFF";
+      chipClass = "power-off";
+    } else if (isOpen) {
       chipLabel = "DOOR OPEN";
       chipClass = "active-alert";
     } else if (waterFilter.state === "Expired") {
@@ -414,12 +483,13 @@ class PassableApplianceCard extends LitElement {
           <div class="header-subtitle-row">
             <p class="subtitle">Food Storage & Dispenser</p>
             <div class="header-right">
+              ${this._renderPowerButton(powerEntity)}
               <div class="status-chip ${chipClass}">${chipLabel}</div>
             </div>
           </div>
         </div>
 
-        <div class="card-content">
+        <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           <div class="fridge-body">
             <!-- Left Door with Dispenser Cutout -->
             <div class="fridge-door fridge-left-door ${doorStatus.state === "Fridge Open" ? "door-open" : ""}">
@@ -581,6 +651,10 @@ class PassableApplianceCard extends LitElement {
   // ==========================================
   _renderInductionRange() {
     const c = this.config;
+    const powerEntity = this._getPowerEntity("induction_range");
+    const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
+
     const ovenConfig = c.oven || {
       upper_control: c.upper_control,
       lower_control: c.lower_control,
@@ -625,7 +699,10 @@ class PassableApplianceCard extends LitElement {
 
     let chipLabel = "IDLE";
     let chipClass = "idle";
-    if (isAnyBurnerOn && (isUpperOn || isLowerOn)) {
+    if (isPowerOff) {
+      chipLabel = "POWER OFF";
+      chipClass = "power-off";
+    } else if (isAnyBurnerOn && (isUpperOn || isLowerOn)) {
       chipLabel = "RANGE ACTIVE";
       chipClass = "active-range";
     } else if (isAnyBurnerOn) {
@@ -646,12 +723,13 @@ class PassableApplianceCard extends LitElement {
           <div class="header-subtitle-row">
             <p class="subtitle">Cooking Zones & Ovens</p>
             <div class="header-right">
+              ${this._renderPowerButton(powerEntity)}
               <div class="status-chip ${chipClass}">${chipLabel}</div>
             </div>
           </div>
         </div>
 
-        <div class="card-content">
+        <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           <div class="graphics-container">
             <!-- Cooktop Container -->
             <div class="cooktop-container">
@@ -774,6 +852,15 @@ class PassableApplianceCard extends LitElement {
   // ==========================================
   _renderLaundry() {
     const c = this.config;
+    const washerPowerEntity = this._getPowerEntity("laundry", "washer");
+    const dryerPowerEntity = this._getPowerEntity("laundry", "dryer");
+    const cardPowerEntity = this._getPowerEntity("laundry");
+
+    const washerPowerState = washerPowerEntity ? this._getEntity(washerPowerEntity).state : null;
+    const dryerPowerState = dryerPowerEntity ? this._getEntity(dryerPowerEntity).state : null;
+    const isWasherPowerOff = washerPowerState === "off" || washerPowerState === "false";
+    const isDryerPowerOff = dryerPowerState === "off" || dryerPowerState === "false";
+
     const washerConfig = c.washer || {
       current_status: c.washer_status,
       operation: c.washer_operation,
@@ -798,12 +885,21 @@ class PassableApplianceCard extends LitElement {
     };
 
     const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
-    const isWasherActive = activeStates.includes((washerEntities.status.state || "").toLowerCase());
-    const isDryerActive = activeStates.includes((dryerEntities.status.state || "").toLowerCase());
+    const isWasherActive = !isWasherPowerOff && activeStates.includes((washerEntities.status.state || "").toLowerCase());
+    const isDryerActive = !isDryerPowerOff && activeStates.includes((dryerEntities.status.state || "").toLowerCase());
 
     let chipLabel = "IDLE";
     let chipClass = "idle";
-    if (isWasherActive && isDryerActive) {
+    if (isWasherPowerOff && isDryerPowerOff) {
+      chipLabel = "POWER OFF";
+      chipClass = "power-off";
+    } else if (isWasherPowerOff) {
+      chipLabel = "WASHER OFF";
+      chipClass = "power-off";
+    } else if (isDryerPowerOff) {
+      chipLabel = "DRYER OFF";
+      chipClass = "power-off";
+    } else if (isWasherActive && isDryerActive) {
       chipLabel = "RUNNING";
       chipClass = "active";
     } else if (isWasherActive) {
@@ -824,14 +920,15 @@ class PassableApplianceCard extends LitElement {
           <div class="header-subtitle-row">
             <p class="subtitle">Washer & Dryer Status</p>
             <div class="header-right">
+              ${cardPowerEntity ? this._renderPowerButton(cardPowerEntity) : ""}
               <div class="status-chip ${chipClass}">${chipLabel}</div>
             </div>
           </div>
         </div>
 
         <div class="card-content">
-          ${this._renderLaundryUnit("Washer", "mdi:washing-machine", washerEntities)}
-          ${this._renderLaundryUnit("Dryer", "mdi:tumble-dryer", dryerEntities)}
+          ${this._renderLaundryUnit("Washer", "mdi:washing-machine", washerEntities, washerPowerEntity)}
+          ${this._renderLaundryUnit("Dryer", "mdi:tumble-dryer", dryerEntities, dryerPowerEntity)}
         </div>
       </ha-card>
     `;
@@ -849,20 +946,24 @@ class PassableApplianceCard extends LitElement {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
-  _renderLaundryUnit(name, icon, entities) {
+  _renderLaundryUnit(name, icon, entities, powerEntity = null) {
+    const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
+
     const status = (entities.status.state || "off").toLowerCase().replace("_", " ");
     const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
-    const isActive = activeStates.includes(status);
+    const isActive = !isPowerOff && activeStates.includes(status);
     const machineType = name.toLowerCase();
-    const displayStatus = status === "power off" ? "Off" : status;
+    const displayStatus = isPowerOff ? "Power Off" : (status === "power off" ? "Off" : status);
     const remainingTime = this._formatRemainingTime(entities.remaining_time.state);
 
     return html`
-      <div class="appliance-container m3-card" style="margin-bottom: 16px;">
+      <div class="appliance-container m3-card ${isPowerOff ? "unit-power-off" : ""}" style="margin-bottom: 16px;">
         <div class="graphic-header">
           <div class="appliance-header">
             <ha-icon .icon=${icon}></ha-icon>
             <span class="name">${name}</span>
+            ${this._renderPowerButton(powerEntity, "unit-power-btn")}
           </div>
           <div class="knob-container">
             <svg class="knob-svg" viewBox="0 0 32 32">
@@ -902,6 +1003,10 @@ class PassableApplianceCard extends LitElement {
   // ==========================================
   _renderWaterHeater() {
     const c = this.config;
+    const powerEntity = this._getPowerEntity("water_heater");
+    const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
+
     const mainEntityId = c.entity || "water_heater.water_heater";
     const stateObj = this.hass.states[mainEntityId] || { state: "unavailable", attributes: {} };
     const attributes = stateObj.attributes || {};
@@ -918,8 +1023,8 @@ class PassableApplianceCard extends LitElement {
     const gasUsage = parseFloat(gasData.state) || 0;
 
     // Heating condition: ONLY when heating or when water flow > 0 GPM
-    const isHeating = stateObj.state === "heating" || stateObj.state === "on" || flowRate > 0;
-    const isRecircActive = recircSwitch.state === "on" || recircSwitch.state === "true";
+    const isHeating = !isPowerOff && (stateObj.state === "heating" || stateObj.state === "on" || flowRate > 0);
+    const isRecircActive = !isPowerOff && (recircSwitch.state === "on" || recircSwitch.state === "true");
     const animateMainLines = isHeating || isRecircActive;
 
     const targetTemp = parseFloat(attributes.temperature) || 125;
@@ -936,6 +1041,16 @@ class PassableApplianceCard extends LitElement {
       recircSubLabel = "• 9 min ago • Ran for 39s";
     }
 
+    let chipLabel = "IDLE";
+    let chipClass = "idle";
+    if (isPowerOff) {
+      chipLabel = "POWER OFF";
+      chipClass = "power-off";
+    } else if (isHeating) {
+      chipLabel = "HEATING";
+      chipClass = "heating";
+    }
+
     return html`
       <ha-card>
         <div class="header">
@@ -946,15 +1061,16 @@ class PassableApplianceCard extends LitElement {
           <div class="header-subtitle-row">
             <p class="subtitle">Tankless Water Heater</p>
             <div class="header-right">
+              ${this._renderPowerButton(powerEntity)}
               <div class="icon-btn-header" @click=${() => (this._showFlushGuide = true)} title="Flush Guide" style="cursor:pointer;">
                 <ha-icon icon="mdi:wrench-outline"></ha-icon>
               </div>
-              <div class="status-chip ${isHeating ? "heating" : "idle"}">${isHeating ? "HEATING" : "IDLE"}</div>
+              <div class="status-chip ${chipClass}">${chipLabel}</div>
             </div>
           </div>
         </div>
 
-        <div class="card-content">
+        <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           <!-- Main Navien Viz Container -->
           <div class="viz-container">
             <svg viewBox="0 0 300 260" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
@@ -1263,6 +1379,10 @@ class PassableApplianceCard extends LitElement {
   // ==========================================
   _renderSmartHoseTimer() {
     const c = this.config;
+    const powerEntity = this._getPowerEntity("smart_hose_timer");
+    const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
+
     const valve = this._getEntity(c.valve_entity);
     const stateSens = c.state_sensor ? this._getEntity(c.state_sensor) : null;
     const history = c.history_sensor ? this._getEntity(c.history_sensor) : null;
@@ -1271,8 +1391,8 @@ class PassableApplianceCard extends LitElement {
     const smartWatering = c.smart_watering_switch ? this._getEntity(c.smart_watering_switch) : null;
     const rainDelay = c.rain_delay_switch ? this._getEntity(c.rain_delay_switch) : null;
 
-    const isOpen = valve.state === "open" || valve.state === "on";
-    const statusText = isOpen ? "Watering" : (stateSens && stateSens.state !== "unavailable" ? stateSens.state : "Auto");
+    const isOpen = !isPowerOff && (valve.state === "open" || valve.state === "on");
+    const statusText = isPowerOff ? "Power Off" : (isOpen ? "Watering" : (stateSens && stateSens.state !== "unavailable" ? stateSens.state : "Auto"));
 
     let lastRunTime = "--";
     let lastGallons = "--";
@@ -1295,6 +1415,16 @@ class PassableApplianceCard extends LitElement {
     const knobX = 50 + radius * Math.cos(angleRad);
     const knobY = 50 + radius * Math.sin(angleRad);
 
+    let chipLabel = "IDLE";
+    let chipClass = "idle";
+    if (isPowerOff) {
+      chipLabel = "POWER OFF";
+      chipClass = "power-off";
+    } else if (isOpen) {
+      chipLabel = "ACTIVE";
+      chipClass = "heating";
+    }
+
     return html`
       <ha-card>
         <div class="header">
@@ -1305,6 +1435,7 @@ class PassableApplianceCard extends LitElement {
           <div class="header-subtitle-row">
             <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
             <div class="header-right">
+              ${this._renderPowerButton(powerEntity)}
               ${battery && battery.state !== "unavailable"
                 ? html`
                     <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer;">
@@ -1313,12 +1444,12 @@ class PassableApplianceCard extends LitElement {
                     </div>
                   `
                 : ""}
-              <div class="status-chip ${isOpen ? "heating" : "idle"}">${isOpen ? "ACTIVE" : "IDLE"}</div>
+              <div class="status-chip ${chipClass}">${chipLabel}</div>
             </div>
           </div>
         </div>
 
-        <div class="card-content">
+        <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           ${c.bhyve_mode !== false
             ? html`
                 <div class="ring-container">
@@ -1535,6 +1666,34 @@ class PassableApplianceCard extends LitElement {
       .status-chip.active-alert, .status-chip.heating { background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15); color: var(--error-color, #f44336); }
       .status-chip.active-cooktop, .status-chip.active-warning, .status-chip.active-washer { background: rgba(var(--rgb-info-color, 49, 130, 206), 0.15); color: var(--info-color, #3182ce); }
       .status-chip.active-dryer { background: rgba(var(--rgb-warning-color, 237, 137, 54), 0.15); color: var(--warning-color, #ed8936); }
+      .status-chip.power-off { background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15); color: var(--error-color, #f44336); border: 1px solid rgba(var(--rgb-error-color, 244, 67, 54), 0.3); }
+
+      /* POWER BUTTON & POWER OFF STATES */
+      .power-btn-header {
+        width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.2s ease; border: 1px solid var(--divider-color, rgba(128, 128, 128, 0.3));
+        background: var(--card-background-color, rgba(128, 128, 128, 0.1)); flex-shrink: 0;
+      }
+      .power-btn-header.on {
+        color: var(--success-color, #4caf50); border-color: var(--success-color, #4caf50);
+        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15); box-shadow: 0 0 8px rgba(76, 175, 80, 0.3);
+      }
+      .power-btn-header.off {
+        color: var(--error-color, #f44336); border-color: var(--error-color, #f44336);
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.12); opacity: 0.85;
+      }
+      .power-btn-header:hover { transform: scale(1.08); }
+      .power-btn-header:active { transform: scale(0.95); }
+      .power-btn-header ha-icon { --mdc-icon-size: 18px; }
+
+      .unit-power-btn { width: 24px; height: 24px; margin-left: 6px; }
+      .unit-power-btn ha-icon { --mdc-icon-size: 14px; }
+
+      .power-off-card { opacity: 0.55; filter: grayscale(0.5); pointer-events: none; transition: all 0.3s ease; }
+      .power-off-card .power-btn-header, .power-off-card .settings-btn { pointer-events: auto; }
+      .unit-power-off { opacity: 0.55; filter: grayscale(0.5); transition: all 0.3s ease; }
+      .unit-power-off .power-btn-header { pointer-events: auto; }
+      .unit-power-off .spinner { animation: none !important; }
 
       .card-content { padding: 0 16px 16px; }
 
@@ -1876,6 +2035,15 @@ class PassableApplianceCardEditor extends LitElement {
         
         <ha-selector
           .hass=${this.hass}
+          .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
+          .value=${this.config.power_entity || ""}
+          .configValue=${"power_entity"}
+          .label=${"Power Switch / Entity (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
           .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
           .value=${this.config.fridge_control || ""}
           .configValue=${"fridge_control"}
@@ -1956,6 +2124,15 @@ class PassableApplianceCardEditor extends LitElement {
 
         <ha-selector
           .hass=${this.hass}
+          .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
+          .value=${this.config.power_entity || ""}
+          .configValue=${"power_entity"}
+          .label=${"Power Switch / Entity (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
           .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
           .value=${this.config.upper_control || ""}
           .configValue=${"upper_control"}
@@ -1997,6 +2174,25 @@ class PassableApplianceCardEditor extends LitElement {
     return html`
       <div class="section-box">
         <h3>Laundry Entity Pickers</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
+          .value=${this.config.power_entity || ""}
+          .configValue=${"power_entity"}
+          .label=${"Main Laundry Power Switch (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
+          .value=${this.config.washer_power || ""}
+          .configValue=${"washer_power"}
+          .label=${"Washer Power Switch (e.g. switch.washer_power)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
@@ -2021,6 +2217,15 @@ class PassableApplianceCardEditor extends LitElement {
           .value=${this.config.washer_remaining_time || ""}
           .configValue=${"washer_remaining_time"}
           .label=${"Washer Remaining Time Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
+          .value=${this.config.dryer_power || ""}
+          .configValue=${"dryer_power"}
+          .label=${"Dryer Power Switch (e.g. switch.dryer_power)"}
           @value-changed=${this._onFieldChange}
         ></ha-selector>
 
@@ -2058,6 +2263,16 @@ class PassableApplianceCardEditor extends LitElement {
     return html`
       <div class="section-box">
         <h3>Water Heater Entity Pickers</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
+          .value=${this.config.power_entity || ""}
+          .configValue=${"power_entity"}
+          .label=${"Power Switch / Entity (Optional, e.g. switch.water_heater_power)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "water_heater" } }}
@@ -2119,6 +2334,15 @@ class PassableApplianceCardEditor extends LitElement {
     return html`
       <div class="section-box">
         <h3>Smart Hose Timer Entity Pickers</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
+          .value=${this.config.power_entity || ""}
+          .configValue=${"power_entity"}
+          .label=${"Power Switch / Entity (Optional)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
 
         <ha-selector
           .hass=${this.hass}

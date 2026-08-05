@@ -56,12 +56,13 @@ hot_water_status_time: sensor.dt507030_hot_water_status_time_until_ready
 hot_water_cancel_switch: switch.dt507030_k_cup_hot_water
 ```
 
-### 2. Tankless Water Heater Example (Customizable Flush Guide)
+### 2. Tankless Water Heater Example (Customizable Flush Guide & Power Control)
 ```yaml
 type: custom:passable-appliance-card
 appliance_type: water_heater
 title: Tankless Water Heater
 entity: water_heater.navien_water_heater
+power_entity: switch.water_heater_power
 inlet_temp_sensor: sensor.navien_inlet_temperature
 outlet_temp_sensor: sensor.navien_outlet_temperature
 flow_rate_sensor: sensor.navien_water_flow_rate
@@ -85,20 +86,23 @@ type: custom:passable-appliance-card
 appliance_type: induction_range
 title: Induction Range
 device_prefix: sqdr174020p
+power_entity: switch.cooktop_power
 upper_control: water_heater.sqdr174020p_oven
 lower_control: water_heater.sqdr174020p_lower_oven
 upper_light_entity: select.sqdr174020p_light
 lower_light_entity: select.sqdr174020p_lower_oven_light
 ```
 
-### 4. Laundry Center Example
+### 4. Laundry Center Example (LG ThinQ & Universal Stack with Power Toggles)
 ```yaml
 type: custom:passable-appliance-card
 appliance_type: laundry
 title: Laundry Center
+washer_power: switch.washer_power
 washer_status: sensor.washer_current_status
 washer_operation: select.washer_operation
 washer_remaining_time: sensor.washer_remaining_time
+dryer_power: switch.dryer_power
 dryer_status: sensor.dryer_current_status
 dryer_operation: select.dryer_operation
 dryer_remaining_time: sensor.dryer_remaining_time
