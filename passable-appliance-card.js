@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.0
+ * Version: 1.1.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.1.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -123,21 +123,27 @@ class PassableApplianceCard extends LitElement {
       const p = c.device_prefix || "hvac";
       c.downstairs_climate = c.downstairs_climate || (c.device_prefix ? `climate.${p}_downstairs` : "climate.downstairs");
       c.downstairs_climate_hk = c.downstairs_climate_hk || (c.device_prefix ? `climate.${p}_downstairs_hk` : "climate.downstairs_hk");
-      c.downstairs_setpoint_preset = c.downstairs_setpoint_preset || (c.device_prefix ? `input_select.${p}_setpoint_preset_downstairs` : "input_select.hvac_setpoint_preset_downstairs");
-      c.downstairs_heat_overshoot = c.downstairs_heat_overshoot || (c.device_prefix ? `input_number.${p}_heat_overshoot_downstairs` : "input_number.hvac_heat_overshoot_downstairs");
-      c.downstairs_cool_overshoot = c.downstairs_cool_overshoot || (c.device_prefix ? `input_number.${p}_cool_overshoot_downstairs` : "input_number.hvac_cool_overshoot_downstairs");
-      c.downstairs_filter_hours = c.downstairs_filter_hours || (c.device_prefix ? `sensor.${p}_downstairs_filter_hours` : "sensor.downstairs_hvac_filter_hours");
-      c.downstairs_filter_life = c.downstairs_filter_life || (c.device_prefix ? `input_number.${p}_downstairs_filter_life_limit` : "input_number.downstairs_hvac_filter_life_limit");
+      c.downstairs_setpoint_preset = c.downstairs_setpoint_preset || (c.device_prefix ? `input_text.${p}_active_profile` : "input_text.hvac_active_profile");
+      c.downstairs_overshoot_active = c.downstairs_overshoot_active || "input_boolean.hvac_overshoot_active_downstairs";
+      c.downstairs_cool_overshoot = c.downstairs_cool_overshoot || "input_number.hvac_overshoot_amount_cool";
+      c.downstairs_heat_overshoot = c.downstairs_heat_overshoot || "input_number.hvac_overshoot_amount_heat";
+      c.downstairs_cool_overshoot_thresh = c.downstairs_cool_overshoot_thresh || "input_number.hvac_overshoot_threshold_cool";
+      c.downstairs_heat_overshoot_thresh = c.downstairs_heat_overshoot_thresh || "input_number.hvac_overshoot_threshold_heat";
+      c.downstairs_filter_hours = c.downstairs_filter_hours || "sensor.hvac_filter_life_remaining_downstairs";
+      c.downstairs_filter_life = c.downstairs_filter_life || "input_number.hvac_filter_life_downstairs";
 
       c.upstairs_climate = c.upstairs_climate || (c.device_prefix ? `climate.${p}_upstairs` : "climate.upstairs");
       c.upstairs_climate_hk = c.upstairs_climate_hk || (c.device_prefix ? `climate.${p}_upstairs_hk` : "climate.upstairs_hk");
-      c.upstairs_setpoint_preset = c.upstairs_setpoint_preset || (c.device_prefix ? `input_select.${p}_setpoint_preset_upstairs` : "input_select.hvac_setpoint_preset_upstairs");
-      c.upstairs_heat_overshoot = c.upstairs_heat_overshoot || (c.device_prefix ? `input_number.${p}_heat_overshoot_upstairs` : "input_number.hvac_heat_overshoot_upstairs");
-      c.upstairs_cool_overshoot = c.upstairs_cool_overshoot || (c.device_prefix ? `input_number.${p}_cool_overshoot_upstairs` : "input_number.hvac_cool_overshoot_upstairs");
-      c.upstairs_filter_hours = c.upstairs_filter_hours || (c.device_prefix ? `sensor.${p}_upstairs_filter_hours` : "sensor.upstairs_hvac_filter_hours");
-      c.upstairs_filter_life = c.upstairs_filter_life || (c.device_prefix ? `input_number.${p}_upstairs_filter_life_limit` : "input_number.upstairs_hvac_filter_life_limit");
+      c.upstairs_setpoint_preset = c.upstairs_setpoint_preset || (c.device_prefix ? `input_text.${p}_active_profile` : "input_text.hvac_active_profile");
+      c.upstairs_overshoot_active = c.upstairs_overshoot_active || "input_boolean.hvac_overshoot_active_upstairs";
+      c.upstairs_cool_overshoot = c.upstairs_cool_overshoot || "input_number.hvac_overshoot_amount_cool";
+      c.upstairs_heat_overshoot = c.upstairs_heat_overshoot || "input_number.hvac_overshoot_amount_heat";
+      c.upstairs_cool_overshoot_thresh = c.upstairs_cool_overshoot_thresh || "input_number.hvac_overshoot_threshold_cool";
+      c.upstairs_heat_overshoot_thresh = c.upstairs_heat_overshoot_thresh || "input_number.hvac_overshoot_threshold_heat";
+      c.upstairs_filter_hours = c.upstairs_filter_hours || "sensor.hvac_filter_life_remaining_upstairs";
+      c.upstairs_filter_life = c.upstairs_filter_life || "input_number.hvac_filter_life_upstairs";
 
-      c.global_setpoint_preset = c.global_setpoint_preset || (c.device_prefix ? `input_select.${p}_setpoint_preset_global` : "input_select.hvac_setpoint_preset_global");
+      c.global_setpoint_preset = c.global_setpoint_preset || "input_select.home_mode";
     }
 
     this.config = c;
@@ -505,19 +511,23 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="header">
-          <h1 class="title">
-            <ha-icon icon="mdi:fridge-outline" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-            ${c.title || "Kitchen Refrigerator"}
-          </h1>
-          <div class="header-subtitle-row">
-            <p class="subtitle">Food Storage & Dispenser</p>
-            <div class="header-right">
-              ${this._renderPowerButton(powerEntity)}
-              <div class="status-chip ${chipClass}">${chipLabel}</div>
-            </div>
-          </div>
-        </div>
+        ${c.show_header !== false
+          ? html`
+              <div class="header">
+                <h1 class="title">
+                  <ha-icon icon="mdi:fridge-outline" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+                  ${c.title || "Kitchen Refrigerator"}
+                </h1>
+                <div class="header-subtitle-row">
+                  <p class="subtitle">Food Storage & Dispenser</p>
+                  <div class="header-right">
+                    ${this._renderPowerButton(powerEntity)}
+                    <div class="status-chip ${chipClass}">${chipLabel}</div>
+                  </div>
+                </div>
+              </div>
+            `
+          : ""}
 
         <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           <div class="fridge-body">
@@ -745,19 +755,23 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="header">
-          <h1 class="title">
-            <ha-icon icon="mdi:stove" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-            ${c.title || "Induction Range"}
-          </h1>
-          <div class="header-subtitle-row">
-            <p class="subtitle">Cooking Zones & Ovens</p>
-            <div class="header-right">
-              ${this._renderPowerButton(powerEntity)}
-              <div class="status-chip ${chipClass}">${chipLabel}</div>
-            </div>
-          </div>
-        </div>
+        ${c.show_header !== false
+          ? html`
+              <div class="header">
+                <h1 class="title">
+                  <ha-icon icon="mdi:stove" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+                  ${c.title || "Induction Range"}
+                </h1>
+                <div class="header-subtitle-row">
+                  <p class="subtitle">Cooking Zones & Ovens</p>
+                  <div class="header-right">
+                    ${this._renderPowerButton(powerEntity)}
+                    <div class="status-chip ${chipClass}">${chipLabel}</div>
+                  </div>
+                </div>
+              </div>
+            `
+          : ""}
 
         <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           <div class="graphics-container">
@@ -942,19 +956,23 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="header">
-          <h1 class="title">
-            <ha-icon icon="mdi:washing-machine" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-            ${c.title || "Laundry"}
-          </h1>
-          <div class="header-subtitle-row">
-            <p class="subtitle">Washer & Dryer Status</p>
-            <div class="header-right">
-              ${cardPowerEntity ? this._renderPowerButton(cardPowerEntity) : ""}
-              <div class="status-chip ${chipClass}">${chipLabel}</div>
-            </div>
-          </div>
-        </div>
+        ${c.show_header !== false
+          ? html`
+              <div class="header">
+                <h1 class="title">
+                  <ha-icon icon="mdi:washing-machine" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+                  ${c.title || "Laundry"}
+                </h1>
+                <div class="header-subtitle-row">
+                  <p class="subtitle">Washer & Dryer Status</p>
+                  <div class="header-right">
+                    ${cardPowerEntity ? this._renderPowerButton(cardPowerEntity) : ""}
+                    <div class="status-chip ${chipClass}">${chipLabel}</div>
+                  </div>
+                </div>
+              </div>
+            `
+          : ""}
 
         <div class="card-content">
           ${this._renderLaundryUnit("Washer", "mdi:washing-machine", washerEntities, washerPowerEntity)}
@@ -1083,22 +1101,26 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="header">
-          <h1 class="title">
-            <ha-icon icon="mdi:water-boiler" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-            ${c.title || attributes.friendly_name || "Water Heater"}
-          </h1>
-          <div class="header-subtitle-row">
-            <p class="subtitle">Tankless Water Heater</p>
-            <div class="header-right">
-              ${this._renderPowerButton(powerEntity)}
-              <div class="icon-btn-header" @click=${() => (this._showFlushGuide = true)} title="Flush Guide" style="cursor:pointer;">
-                <ha-icon icon="mdi:wrench-outline"></ha-icon>
+        ${c.show_header !== false
+          ? html`
+              <div class="header">
+                <h1 class="title">
+                  <ha-icon icon="mdi:water-boiler" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+                  ${c.title || attributes.friendly_name || "Water Heater"}
+                </h1>
+                <div class="header-subtitle-row">
+                  <p class="subtitle">Tankless Water Heater</p>
+                  <div class="header-right">
+                    ${this._renderPowerButton(powerEntity)}
+                    <div class="icon-btn-header" @click=${() => (this._showFlushGuide = true)} title="Flush Guide" style="cursor:pointer;">
+                      <ha-icon icon="mdi:wrench-outline"></ha-icon>
+                    </div>
+                    <div class="status-chip ${chipClass}">${chipLabel}</div>
+                  </div>
+                </div>
               </div>
-              <div class="status-chip ${chipClass}">${chipLabel}</div>
-            </div>
-          </div>
-        </div>
+            `
+          : ""}
 
         <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           <!-- Main Navien Viz Container -->
@@ -1457,27 +1479,31 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="header">
-          <h1 class="title">
-            <ha-icon icon="${isOpen ? "mdi:sprinkler" : "mdi:sprinkler-variant"}" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-            ${c.title || "Smart Hose Timer"}
-          </h1>
-          <div class="header-subtitle-row">
-            <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
-            <div class="header-right">
-              ${this._renderPowerButton(powerEntity)}
-              ${battery && battery.state !== "unavailable"
-                ? html`
-                    <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer;">
-                      <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px;"></ha-icon>
-                      <span>${battery.state}%</span>
-                    </div>
-                  `
-                : ""}
-              <div class="status-chip ${chipClass}">${chipLabel}</div>
-            </div>
-          </div>
-        </div>
+        ${c.show_header !== false
+          ? html`
+              <div class="header">
+                <h1 class="title">
+                  <ha-icon icon="${isOpen ? "mdi:sprinkler" : "mdi:sprinkler-variant"}" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+                  ${c.title || "Smart Hose Timer"}
+                </h1>
+                <div class="header-subtitle-row">
+                  <p class="subtitle" style="text-transform: capitalize;">${statusText}</p>
+                  <div class="header-right">
+                    ${this._renderPowerButton(powerEntity)}
+                    ${battery && battery.state !== "unavailable"
+                      ? html`
+                          <div class="status-chip ${parseInt(battery.state) < 20 ? 'error' : 'idle'}" @click=${() => this._showMoreInfo(c.battery_sensor)} style="cursor: pointer;">
+                            <ha-icon icon="mdi:battery" style="--mdc-icon-size:14px;"></ha-icon>
+                            <span>${battery.state}%</span>
+                          </div>
+                        `
+                      : ""}
+                    <div class="status-chip ${chipClass}">${chipLabel}</div>
+                  </div>
+                </div>
+              </div>
+            `
+          : ""}
 
         <div class="card-content ${isPowerOff ? "power-off-card" : ""}">
           ${c.bhyve_mode !== false
@@ -1630,6 +1656,14 @@ class PassableApplianceCard extends LitElement {
     }
   }
 
+  _setHvacPresetMode(climateEntity, presetMode) {
+    this._fireHaptic("medium");
+    this.hass.callService("climate", "set_preset_mode", {
+      entity_id: climateEntity,
+      preset_mode: presetMode,
+    });
+  }
+
   // ==========================================
   // 6. HVAC SYSTEMS (DUAL HEAT PUMPS & HELPERS)
   // ==========================================
@@ -1639,25 +1673,29 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="header">
-          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-            <h1 class="title">
-              <ha-icon icon="mdi:hvac" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
-              ${c.title || "HVAC Systems"}
-            </h1>
-            ${globalPresetObj && globalPresetObj.state !== "unavailable"
-              ? html`
-                  <div class="global-preset-badge">
-                    <ha-icon icon="mdi:tune-vertical" style="--mdc-icon-size:16px; margin-right:4px;"></ha-icon>
-                    <span>${globalPresetObj.state}</span>
-                  </div>
-                `
-              : ""}
-          </div>
-          <div class="header-subtitle-row">
-            <p class="subtitle">Dual Heat Pump Systems & Comfort Control</p>
-          </div>
-        </div>
+        ${c.show_header !== false
+          ? html`
+              <div class="header">
+                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                  <h1 class="title">
+                    <ha-icon icon="mdi:hvac" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+                    ${c.title || "HVAC Systems"}
+                  </h1>
+                  ${globalPresetObj && globalPresetObj.state !== "unavailable" && globalPresetObj.state !== "unknown"
+                    ? html`
+                        <div class="global-preset-badge" @click=${() => this._showMoreInfo(c.global_setpoint_preset)}>
+                          <ha-icon icon="mdi:tune-vertical" style="--mdc-icon-size:16px; margin-right:4px;"></ha-icon>
+                          <span>${globalPresetObj.state}</span>
+                        </div>
+                      `
+                    : ""}
+                </div>
+                <div class="header-subtitle-row">
+                  <p class="subtitle">Dual Heat Pump Systems & Comfort Control</p>
+                </div>
+              </div>
+            `
+          : ""}
 
         <div class="card-content">
           <div class="hvac-grid">
@@ -1675,14 +1713,16 @@ class PassableApplianceCard extends LitElement {
     const c = this.config;
     const climateId = c[`${unitKey}_climate`] || defaultClimate;
     const hkClimateId = c[`${unitKey}_climate_hk`] || defaultHkClimate;
-    const presetId = c[`${unitKey}_setpoint_preset`] || `input_select.hvac_setpoint_preset_${unitKey}`;
-    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || `input_number.hvac_heat_overshoot_${unitKey}`;
-    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || `input_number.hvac_cool_overshoot_${unitKey}`;
-    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.${unitKey}_hvac_filter_hours`;
-    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.${unitKey}_hvac_filter_life_limit`;
+    const presetId = c[`${unitKey}_setpoint_preset`] || "input_text.hvac_active_profile";
+    const overshootActiveId = c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
+    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
+    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
+    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.hvac_filter_life_remaining_${unitKey}`;
+    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.hvac_filter_life_${unitKey}`;
 
     const climate = this._getEntity(climateId);
     const preset = this._getEntity(presetId);
+    const overshootActiveObj = this._getEntity(overshootActiveId);
     const heatOvershoot = this._getEntity(heatOvershootId);
     const coolOvershoot = this._getEntity(coolOvershootId);
     const filterHours = this._getEntity(filterHoursId);
@@ -1716,13 +1756,28 @@ class PassableApplianceCard extends LitElement {
     }
 
     // Filter calculations
-    const remHours = parseFloat(filterHours.state) || 0;
-    const maxHours = parseFloat(filterLife.state) || 500;
-    const filterPct = Math.max(0, Math.min(100, Math.round((remHours / maxHours) * 100)));
+    const remHours = parseFloat(filterHours.state);
+    const maxHours = parseFloat(filterLife.state) || 300;
+    const filterPct = !isNaN(remHours) && maxHours > 0 ? Math.max(0, Math.min(100, Math.round((remHours / maxHours) * 100))) : 0;
     const filterClass = filterPct < 15 ? "expired" : filterPct < 35 ? "warning" : "ok";
 
-    // Overshoot display
-    const activeOvershoot = hvacAction === "cooling" && coolOvershoot.state ? `Cool +${coolOvershoot.state}°F` : (hvacAction === "heating" && heatOvershoot.state ? `Heat -${heatOvershoot.state}°F` : null);
+    // Overshoot display calculation
+    const isOvershootActive = overshootActiveObj.state === "on" || (overshootActiveObj.state !== "off" && (hvacAction === "cooling" || hvacAction === "heating"));
+    let activeOvershoot = null;
+    if (isOvershootActive) {
+      if (hvacAction === "cooling" && coolOvershoot.state && coolOvershoot.state !== "unavailable" && coolOvershoot.state !== "unknown") {
+        activeOvershoot = `Cool +${coolOvershoot.state}°F`;
+      } else if (hvacAction === "heating" && heatOvershoot.state && heatOvershoot.state !== "unavailable" && heatOvershoot.state !== "unknown") {
+        activeOvershoot = `Heat -${heatOvershoot.state}°F`;
+      } else if (overshootActiveObj.state === "on") {
+        activeOvershoot = `Overshoot Active`;
+      }
+    }
+
+    // Preset display calculation
+    const activePresetName = (climate.attributes.preset_mode && climate.attributes.preset_mode !== "temp" && climate.attributes.preset_mode !== "none") 
+      ? climate.attributes.preset_mode 
+      : (preset && preset.state !== "unavailable" && preset.state !== "unknown" ? preset.state : null);
 
     return html`
       <div class="hvac-unit-card">
@@ -1750,17 +1805,17 @@ class PassableApplianceCard extends LitElement {
             <ha-icon icon="mdi:water-percent"></ha-icon>
             <span>${humidity}% RH</span>
           </div>
-          ${preset && preset.state !== "unavailable"
+          ${activePresetName
             ? html`
-                <div class="hvac-metric">
+                <div class="hvac-metric" @click=${() => this._showHvacModal(unitKey, "setpoints")} style="cursor:pointer;">
                   <ha-icon icon="mdi:bookmark-outline"></ha-icon>
-                  <span>${preset.state}</span>
+                  <span style="text-transform: capitalize;">${activePresetName}</span>
                 </div>
               `
             : ""}
           ${activeOvershoot
             ? html`
-                <div class="hvac-metric overshoot">
+                <div class="hvac-metric overshoot" @click=${() => this._showHvacModal(unitKey, "setpoints")} style="cursor:pointer;">
                   <ha-icon icon="mdi:lightning-bolt"></ha-icon>
                   <span>${activeOvershoot}</span>
                 </div>
@@ -1771,7 +1826,7 @@ class PassableApplianceCard extends LitElement {
         <div class="filter-section">
           <div class="filter-header">
             <span>Filter Life</span>
-            <span>${remHours > 0 ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}</span>
+            <span>${!isNaN(remHours) ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}</span>
           </div>
           <div class="filter-bar-track">
             <div class="filter-bar-fill ${filterClass}" style="width: ${filterPct}%;"></div>
@@ -1834,7 +1889,7 @@ class PassableApplianceCard extends LitElement {
   _resetHvacFilter(filterHoursId, filterLifeId) {
     this._fireHaptic("heavy");
     const filterLife = this._getEntity(filterLifeId);
-    const maxVal = parseFloat(filterLife.state) || 500;
+    const maxVal = parseFloat(filterLife.state) || 300;
     this.hass.callService("input_number", "set_value", {
       entity_id: filterHoursId,
       value: maxVal,
@@ -1854,22 +1909,31 @@ class PassableApplianceCard extends LitElement {
     const unitTitle = unitKey === "downstairs" ? "Downstairs & Basement" : "Upstairs & Attic";
     const climateId = c[`${unitKey}_climate`] || `climate.${unitKey}`;
     const climateHkId = c[`${unitKey}_climate_hk`] || `climate.${unitKey}_hk`;
-    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || `input_number.hvac_heat_overshoot_${unitKey}`;
-    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || `input_number.hvac_cool_overshoot_${unitKey}`;
-    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.${unitKey}_hvac_filter_hours`;
-    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.${unitKey}_hvac_filter_life_limit`;
+    const overshootActiveId = c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
+    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
+    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
+    const coolThreshId = c[`${unitKey}_cool_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_cool";
+    const heatThreshId = c[`${unitKey}_heat_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_heat";
+    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.hvac_filter_life_remaining_${unitKey}`;
+    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.hvac_filter_life_${unitKey}`;
 
     const climate = this._getEntity(climateId);
+    const overshootActiveObj = this._getEntity(overshootActiveId);
     const heatOvershoot = this._getEntity(heatOvershootId);
     const coolOvershoot = this._getEntity(coolOvershootId);
+    const coolThresh = this._getEntity(coolThreshId);
+    const heatThresh = this._getEntity(heatThreshId);
     const filterHours = this._getEntity(filterHoursId);
     const filterLife = this._getEntity(filterLifeId);
+
+    const presetModes = climate.attributes.preset_modes || ["home", "away", "sleep", "ECO", "Alt Sleep"];
+    const currentPreset = climate.attributes.preset_mode || "home";
 
     return html`
       <div class="modal-overlay" @click=${() => this._closeHvacModal()}>
         <div class="modal-content" @click=${(e) => e.stopPropagation()}>
           <div class="modal-header">
-            <h2>${unitTitle} - ${type === "setpoints" ? "Setpoints & Overshoot" : "Filter Maintenance"}</h2>
+            <h2>${unitTitle} - ${type === "setpoints" ? "Setpoints & Presets" : "Filter Maintenance"}</h2>
             <button class="close-btn" @click=${() => this._closeHvacModal()}>
               <ha-icon icon="mdi:close"></ha-icon>
             </button>
@@ -1878,9 +1942,10 @@ class PassableApplianceCard extends LitElement {
           <div class="modal-body">
             ${type === "setpoints"
               ? html`
-                  <div class="control-row" style="margin-bottom:16px;">
+                  <!-- HVAC Mode -->
+                  <div class="control-row" style="margin-bottom:14px;">
                     <span class="control-label">HVAC Mode</span>
-                    <div style="display:flex; gap:6px;">
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
                       ${["cool", "heat", "auto", "off"].map(
                         (m) => html`
                           <button
@@ -1894,6 +1959,24 @@ class PassableApplianceCard extends LitElement {
                     </div>
                   </div>
 
+                  <!-- Preset Modes -->
+                  <div class="control-row" style="margin-bottom:14px;">
+                    <span class="control-label">Preset Mode</span>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                      ${presetModes.map(
+                        (p) => html`
+                          <button
+                            class="hvac-mode-btn ${currentPreset.toLowerCase() === p.toLowerCase() ? "active" : ""}"
+                            @click=${() => this._setHvacPresetMode(climateId, p)}
+                          >
+                            ${p}
+                          </button>
+                        `
+                      )}
+                    </div>
+                  </div>
+
+                  <!-- Target Setpoint -->
                   <div class="control-row" style="margin-bottom:16px;">
                     <span class="control-label">Target Setpoint</span>
                     <div class="step-controller-pill">
@@ -1904,31 +1987,74 @@ class PassableApplianceCard extends LitElement {
                   </div>
 
                   <div class="divider"></div>
-                  <h4 style="margin:8px 0; color:var(--primary-color);">Overshoot Threshold Helpers</h4>
+                  <h4 style="margin:8px 0 12px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
+                    <ha-icon icon="mdi:lightning-bolt"></ha-icon>
+                    <span>Overshoot Buffer Controls</span>
+                  </h4>
 
-                  <div class="control-row" style="margin-bottom:12px;">
-                    <div class="control-label-group">
-                      <ha-icon icon="mdi:snowflake"></ha-icon>
-                      <span class="control-label">Cooling Overshoot Buffer</span>
-                    </div>
-                    <div class="step-controller-pill">
-                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, -0.5)}>-</button>
-                      <span class="pill-value">+${coolOvershoot.state || 0}°F</span>
-                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, 0.5)}>+</button>
-                    </div>
-                  </div>
+                  ${overshootActiveObj && overshootActiveObj.state !== "unavailable"
+                    ? html`
+                        <div class="control-row" style="margin-bottom:12px;">
+                          <div class="control-label-group">
+                            <ha-icon icon="mdi:power-plug"></ha-icon>
+                            <span class="control-label">Overshoot State</span>
+                          </div>
+                          <ha-switch
+                            .checked=${overshootActiveObj.state === "on"}
+                            @change=${() => this._toggleEntity(overshootActiveId)}
+                            class="popup-switch"
+                          ></ha-switch>
+                        </div>
+                      `
+                    : ""}
 
-                  <div class="control-row" style="margin-bottom:12px;">
-                    <div class="control-label-group">
-                      <ha-icon icon="mdi:fire"></ha-icon>
-                      <span class="control-label">Heating Overshoot Buffer</span>
-                    </div>
-                    <div class="step-controller-pill">
-                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, -0.5)}>-</button>
-                      <span class="pill-value">-${heatOvershoot.state || 0}°F</span>
-                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, 0.5)}>+</button>
-                    </div>
-                  </div>
+                  ${coolOvershoot.state && coolOvershoot.state !== "unavailable"
+                    ? html`
+                        <div class="control-row" style="margin-bottom:12px;">
+                          <div class="control-label-group">
+                            <ha-icon icon="mdi:snowflake"></ha-icon>
+                            <span class="control-label">Cooling Overshoot Offset</span>
+                          </div>
+                          <div class="step-controller-pill">
+                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, -0.5)}>-</button>
+                            <span class="pill-value">+${coolOvershoot.state}°F</span>
+                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, 0.5)}>+</button>
+                          </div>
+                        </div>
+                      `
+                    : ""}
+
+                  ${heatOvershoot.state && heatOvershoot.state !== "unavailable"
+                    ? html`
+                        <div class="control-row" style="margin-bottom:12px;">
+                          <div class="control-label-group">
+                            <ha-icon icon="mdi:fire"></ha-icon>
+                            <span class="control-label">Heating Overshoot Offset</span>
+                          </div>
+                          <div class="step-controller-pill">
+                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, -0.5)}>-</button>
+                            <span class="pill-value">-${heatOvershoot.state}°F</span>
+                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, 0.5)}>+</button>
+                          </div>
+                        </div>
+                      `
+                    : ""}
+
+                  ${coolThresh.state && coolThresh.state !== "unavailable"
+                    ? html`
+                        <div class="control-row" style="margin-bottom:12px;">
+                          <div class="control-label-group">
+                            <ha-icon icon="mdi:thermometer-alert"></ha-icon>
+                            <span class="control-label">Cool Trigger Threshold</span>
+                          </div>
+                          <div class="step-controller-pill">
+                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolThreshId, -0.5)}>-</button>
+                            <span class="pill-value">${coolThresh.state}°F</span>
+                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolThreshId, 0.5)}>+</button>
+                          </div>
+                        </div>
+                      `
+                    : ""}
 
                   <div class="divider"></div>
                   <button class="recirc-button" style="width:100%; margin-top:8px;" @click=${() => this._showMoreInfo(climateHkId || climateId)}>
@@ -1940,7 +2066,7 @@ class PassableApplianceCard extends LitElement {
                   <div class="materials-section">
                     <h3><ha-icon icon="mdi:air-filter"></ha-icon> Air Filter Status</h3>
                     <p>Remaining Run Time: <strong>${filterHours.state || 0} Hours</strong></p>
-                    <p>Max Recommended Life: <strong>${filterLife.state || 500} Hours</strong></p>
+                    <p>Max Recommended Life: <strong>${filterLife.state || 300} Hours</strong></p>
                   </div>
 
                   <div class="step-timeline">
@@ -1962,7 +2088,7 @@ class PassableApplianceCard extends LitElement {
                       <div class="step-num">3</div>
                       <div class="step-content">
                         <h4>Reset Hours Counter</h4>
-                        <p>Tap the reset button below to restore filter lifespan back to full 500 hours.</p>
+                        <p>Tap the reset button below to restore filter lifespan back to max limit.</p>
                       </div>
                     </div>
                   </div>
@@ -2386,6 +2512,16 @@ class PassableApplianceCardEditor extends LitElement {
             .configValue=${"title"}
             @input=${this._onFieldChange}
           ></ha-textfield>
+        </div>
+
+        <!-- Show Header Switch -->
+        <div class="form-group" style="display:flex; align-items:center; justify-content:space-between;">
+          <label class="form-label">Show Card Header</label>
+          <ha-switch
+            .checked=${this.config.show_header !== false}
+            .configValue=${"show_header"}
+            @change=${this._onFieldChange}
+          ></ha-switch>
         </div>
 
         <!-- Appliance Type Selector -->
