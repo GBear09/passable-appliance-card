@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.6
+ * Version: 1.1.7
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.1.6";
+const CARD_VERSION = "1.1.7";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1726,8 +1726,8 @@ class PassableApplianceCard extends LitElement {
 
         <div class="card-content">
           <div class="hvac-grid">
-            ${this._renderHvacUnitCard("downstairs", "Downstairs & Basement", "mdi:home-floor-1", c.downstairs_climate || "climate.downstairs", c.downstairs_climate_hk || "climate.downstairs_hk")}
             ${this._renderHvacUnitCard("upstairs", "Upstairs & Attic", "mdi:home-floor-2", c.upstairs_climate || "climate.upstairs", c.upstairs_climate_hk || "climate.upstairs_hk")}
+            ${this._renderHvacUnitCard("downstairs", "Downstairs & Basement", "mdi:home-floor-1", c.downstairs_climate || "climate.downstairs", c.downstairs_climate_hk || "climate.downstairs_hk")}
           </div>
         </div>
 
