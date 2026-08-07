@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.4
+ * Version: 1.1.5
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.1.4";
+const CARD_VERSION = "1.1.5";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -392,6 +392,7 @@ class PassableApplianceCard extends LitElement {
     if (!this.shadowRoot) {
       this._popup = null;
       this._popupOven = null;
+      this._hvacModal = null;
       return;
     }
     const overlay = this.shadowRoot.querySelector(".popup-overlay");
@@ -406,6 +407,7 @@ class PassableApplianceCard extends LitElement {
     setTimeout(() => {
       this._popup = null;
       this._popupOven = null;
+      this._hvacModal = null;
       this._embeddedCard = null;
     }, 300);
   }
@@ -424,6 +426,7 @@ class PassableApplianceCard extends LitElement {
     const currentY = e.touches[0].clientY;
     const deltaY = currentY - this._startY;
     if (deltaY > 0 && popupContent.scrollTop <= 0) {
+      if (e.cancelable) e.preventDefault();
       this._currentY = currentY;
       popupContent.style.transform = `translateY(${deltaY}px)`;
     }
@@ -434,12 +437,30 @@ class PassableApplianceCard extends LitElement {
     const popupContent = e.currentTarget;
     const deltaY = this._currentY - this._startY;
     popupContent.style.transition = "";
-    if (deltaY > 100) {
+    if (deltaY > 80) {
       this._closePopup();
     } else {
       popupContent.style.transform = "";
     }
     this._startY = undefined;
+  }
+
+  _getPresetIcon(presetName) {
+    const p = (presetName || "").toLowerCase();
+    if (p.includes("day") || p.includes("home")) return "mdi:weather-sunny";
+    if (p.includes("sleep") || p.includes("night")) return "mdi:weather-night";
+    if (p.includes("away") || p.includes("vacation")) return "mdi:home-export-outline";
+    if (p.includes("eco")) return "mdi:leaf";
+    return "mdi:clock-outline";
+  }
+
+  _getPresetColor(presetName) {
+    const p = (presetName || "").toLowerCase();
+    if (p.includes("day") || p.includes("home")) return "#facc15";
+    if (p.includes("sleep") || p.includes("night")) return "#a855f7";
+    if (p.includes("away") || p.includes("vacation")) return "#3b82f6";
+    if (p.includes("eco")) return "#22c55e";
+    return "var(--primary-color)";
   }
 
   render() {
@@ -1801,7 +1822,22 @@ class PassableApplianceCard extends LitElement {
                 <ha-icon icon="${stateIcon}" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>
                 ${stateLabel}
               </span>
-              ${activePresetName ? html`<span class="hvac-mini-badge">🔖 ${activePresetName}</span>` : ""}
+              ${activePresetName
+                ? html`
+                    <span
+                      class="hvac-mini-badge clickable"
+                      @click=${(e) => { e.stopPropagation(); this._showHvacModal(unitKey, "setpoints"); }}
+                      style="cursor:pointer; display:inline-flex; align-items:center;"
+                      title="Active Preset: ${activePresetName} (Tap to change)"
+                    >
+                      <ha-icon
+                        icon="${this._getPresetIcon(activePresetName)}"
+                        style="--mdc-icon-size:11px; margin-right:2px; color:${this._getPresetColor(activePresetName)};"
+                      ></ha-icon>
+                      ${activePresetName}
+                    </span>
+                  `
+                : ""}
               ${activeOvershoot ? html`<span class="hvac-mini-badge overshoot">⚡ ${activeOvershoot}</span>` : ""}
             </div>
           </div>
