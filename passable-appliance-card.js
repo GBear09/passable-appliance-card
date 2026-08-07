@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.2
+ * Version: 1.1.3
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.1.2";
+const CARD_VERSION = "1.1.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1730,25 +1730,35 @@ class PassableApplianceCard extends LitElement {
 
     const hvacAction = climate.attributes.hvac_action || climate.state || "idle";
     const currentTemp = climate.attributes.current_temperature ?? "--";
-    const targetTemp = climate.attributes.temperature ?? climate.attributes.target_temp_high ?? climate.attributes.target_temp_low ?? "--";
+    
+    // Round target setpoint to integer (e.g. 73.9 -> 74°)
+    const targetRaw = climate.attributes.temperature ?? climate.attributes.target_temp_high ?? climate.attributes.target_temp_low;
+    const targetTemp = targetRaw !== undefined && targetRaw !== null && !isNaN(parseFloat(targetRaw))
+      ? Math.round(parseFloat(targetRaw))
+      : "--";
+
     const humidity = climate.attributes.current_humidity ?? "--";
 
     let stateClass = "idle";
     let stateLabel = "IDLE";
     let stateIcon = "mdi:hvac-off";
+    let dynamicCardStyle = "";
 
     if (hvacAction === "cooling") {
       stateClass = "active-cool";
       stateLabel = "COOLING";
       stateIcon = "mdi:snowflake";
+      dynamicCardStyle = "background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(30, 41, 59, 0.65)); border: 1px solid rgba(56, 189, 248, 0.35); box-shadow: 0 4px 14px rgba(14, 165, 233, 0.15);";
     } else if (hvacAction === "heating") {
       stateClass = "active-heat";
       stateLabel = "HEATING";
       stateIcon = "mdi:fire";
+      dynamicCardStyle = "background: linear-gradient(135deg, rgba(249, 115, 22, 0.16), rgba(30, 41, 59, 0.65)); border: 1px solid rgba(249, 115, 22, 0.35); box-shadow: 0 4px 14px rgba(249, 115, 22, 0.15);";
     } else if (hvacAction === "fan") {
       stateClass = "active-fan";
       stateLabel = "FAN ONLY";
       stateIcon = "mdi:fan";
+      dynamicCardStyle = "background: linear-gradient(135deg, rgba(74, 222, 128, 0.14), rgba(30, 41, 59, 0.65)); border: 1px solid rgba(74, 222, 128, 0.3);";
     } else if (climate.state === "off") {
       stateClass = "power-off";
       stateLabel = "OFF";
@@ -1780,14 +1790,14 @@ class PassableApplianceCard extends LitElement {
       : (preset && preset.state !== "unavailable" && preset.state !== "unknown" ? preset.state : null);
 
     return html`
-      <div class="hvac-unit-card">
+      <div class="hvac-unit-card ${stateClass}" style="${dynamicCardStyle}">
         <div class="hvac-unit-header">
           <div class="hvac-unit-title">
             <ha-icon icon="${icon}"></ha-icon>
             <span>${title}</span>
           </div>
           <div class="status-chip ${stateClass}">
-            <ha-icon icon="${stateIcon}" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
+            <ha-icon icon="${stateIcon}" style="--mdc-icon-size:13px; margin-right:2px;"></ha-icon>
             ${stateLabel}
           </div>
         </div>
@@ -1802,13 +1812,13 @@ class PassableApplianceCard extends LitElement {
 
         <div class="hvac-telemetry-row">
           <div class="hvac-metric">
-            <ha-icon icon="mdi:water-percent"></ha-icon>
+            <ha-icon icon="mdi:water-percent" style="--mdc-icon-size:14px;"></ha-icon>
             <span>${humidity}% RH</span>
           </div>
           ${activePresetName
             ? html`
                 <div class="hvac-metric" @click=${() => this._showHvacModal(unitKey, "setpoints")} style="cursor:pointer;">
-                  <ha-icon icon="mdi:bookmark-outline"></ha-icon>
+                  <ha-icon icon="mdi:bookmark-outline" style="--mdc-icon-size:14px;"></ha-icon>
                   <span style="text-transform: capitalize;">${activePresetName}</span>
                 </div>
               `
@@ -1816,7 +1826,7 @@ class PassableApplianceCard extends LitElement {
           ${activeOvershoot
             ? html`
                 <div class="hvac-metric overshoot" @click=${() => this._showHvacModal(unitKey, "setpoints")} style="cursor:pointer;">
-                  <ha-icon icon="mdi:lightning-bolt"></ha-icon>
+                  <ha-icon icon="mdi:lightning-bolt" style="--mdc-icon-size:14px;"></ha-icon>
                   <span>${activeOvershoot}</span>
                 </div>
               `
@@ -1835,11 +1845,11 @@ class PassableApplianceCard extends LitElement {
 
         <div class="hvac-card-actions">
           <button class="hvac-btn" @click=${() => this._showHvacModal(unitKey, "setpoints")}>
-            <ha-icon icon="mdi:tune"></ha-icon>
+            <ha-icon icon="mdi:tune" style="--mdc-icon-size:15px;"></ha-icon>
             <span>Setpoints</span>
           </button>
           <button class="hvac-btn" @click=${() => this._showHvacModal(unitKey, "filter")}>
-            <ha-icon icon="mdi:air-filter"></ha-icon>
+            <ha-icon icon="mdi:air-filter" style="--mdc-icon-size:15px;"></ha-icon>
             <span>Filter</span>
           </button>
         </div>
@@ -1899,6 +1909,44 @@ class PassableApplianceCard extends LitElement {
         value: maxVal,
       });
     });
+  }
+
+  _renderPresetSetpointRow(label, heatEntityId, coolEntityId) {
+    const heatObj = this._getEntity(heatEntityId);
+    const coolObj = this._getEntity(coolEntityId);
+
+    const hasHeat = heatObj && heatObj.state !== "unavailable" && heatObj.state !== "unknown";
+    const hasCool = coolObj && coolObj.state !== "unavailable" && coolObj.state !== "unknown";
+
+    if (!hasHeat && !hasCool) return html``;
+
+    return html`
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
+        <span class="control-label" style="font-size:0.85rem; font-weight:600; flex:1;">${label}</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${hasHeat
+            ? html`
+                <div class="step-controller-pill" style="padding:2px 6px;">
+                  <ha-icon icon="mdi:fire" style="--mdc-icon-size:12px; color:#f97316; margin-right:2px;"></ha-icon>
+                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(heatEntityId, -1)}>-</button>
+                  <span class="pill-value" style="font-size:0.8rem; min-width:24px; text-align:center;">${Math.round(parseFloat(heatObj.state))}°</span>
+                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(heatEntityId, 1)}>+</button>
+                </div>
+              `
+            : ""}
+          ${hasCool
+            ? html`
+                <div class="step-controller-pill" style="padding:2px 6px;">
+                  <ha-icon icon="mdi:snowflake" style="--mdc-icon-size:12px; color:#38bdf8; margin-right:2px;"></ha-icon>
+                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(coolEntityId, -1)}>-</button>
+                  <span class="pill-value" style="font-size:0.8rem; min-width:24px; text-align:center;">${Math.round(parseFloat(coolObj.state))}°</span>
+                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(coolEntityId, 1)}>+</button>
+                </div>
+              `
+            : ""}
+        </div>
+      </div>
+    `;
   }
 
   _renderHvacModal() {
@@ -1982,14 +2030,31 @@ class PassableApplianceCard extends LitElement {
                     <span class="control-label">Target Setpoint</span>
                     <div class="step-controller-pill">
                       <button class="pill-btn" @click=${() => this._adjustHvacTemp(climateId, -0.5)}>-</button>
-                      <span class="pill-value">${climate.attributes.temperature || 70}°F</span>
+                      <span class="pill-value">${Math.round(climate.attributes.temperature || 70)}°F</span>
                       <button class="pill-btn" @click=${() => this._adjustHvacTemp(climateId, 0.5)}>+</button>
                     </div>
                   </div>
 
                   <div class="divider"></div>
                   <h4 style="margin:4px 0 8px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
-                    <ha-icon icon="mdi:lightning-bolt"></ha-icon>
+                    <ha-icon icon="mdi:thermometer-cog" style="--mdc-icon-size:18px;"></ha-icon>
+                    <span>Preset Temperature Setpoints</span>
+                  </h4>
+
+                  ${this._renderPresetSetpointRow("Home Profile", `input_number.hvac_preset_${unitKey}_home_heat`, `input_number.hvac_preset_${unitKey}_home_cool`)}
+                  ${this._renderPresetSetpointRow("Sleep Profile", `input_number.hvac_preset_${unitKey}_sleep_heat`, `input_number.hvac_preset_${unitKey}_sleep_cool`)}
+                  ${this._renderPresetSetpointRow("Alt Sleep Profile", `input_number.hvac_preset_${unitKey}_alt_sleep_heat`, `input_number.hvac_preset_${unitKey}_alt_sleep_cool`)}
+
+                  <div style="margin-top:4px;">
+                    ${this._renderPresetSetpointRow("Away Mode", "input_number.hvac_preset_away_heat", "input_number.hvac_preset_away_cool")}
+                    ${this._renderPresetSetpointRow("Eco Mode", "input_number.hvac_preset_eco_heat", "input_number.hvac_preset_eco_cool")}
+                    ${this._renderPresetSetpointRow("Vacation Mode", "input_number.hvac_preset_vacation_heat", "input_number.hvac_preset_vacation_cool")}
+                    ${this._renderPresetSetpointRow("Protect Mode", "input_number.hvac_preset_protect_heat", "input_number.hvac_preset_protect_cool")}
+                  </div>
+
+                  <div class="divider"></div>
+                  <h4 style="margin:4px 0 8px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
+                    <ha-icon icon="mdi:lightning-bolt" style="--mdc-icon-size:18px;"></ha-icon>
                     <span>Overshoot Buffer Controls</span>
                   </h4>
 
@@ -2407,33 +2472,42 @@ class PassableApplianceCard extends LitElement {
       .step-content p { margin: 0 0 4px 0; font-size: 0.9rem; color: var(--secondary-text-color); line-height: 1.4; }
 
       /* HVAC SPECIFIC STYLES */
-      .hvac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+      .hvac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
       @container (max-width: 550px) { .hvac-grid { grid-template-columns: 1fr; } }
       @media (max-width: 768px) { .hvac-grid { grid-template-columns: 1fr; } }
-      .hvac-unit-card { background: var(--secondary-background-color, rgba(128,128,128,0.12)); border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--divider-color, rgba(255,255,255,0.08)); }
-      .hvac-unit-header { display: flex; justify-content: space-between; align-items: center; }
-      .hvac-unit-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.05rem; }
-      .hvac-temp-row { display: flex; align-items: baseline; gap: 12px; cursor: pointer; padding: 4px 0; }
-      .hvac-big-temp { font-size: 2.8rem; font-weight: 800; line-height: 1; color: var(--primary-text-color); }
+      .hvac-unit-card {
+        background: var(--secondary-background-color, rgba(128,128,128,0.12));
+        border-radius: 16px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        border: 1px solid var(--divider-color, rgba(255,255,255,0.08));
+        transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+      }
+      .hvac-unit-header { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+      .hvac-unit-title { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.95rem; }
+      .hvac-temp-row { display: flex; align-items: baseline; gap: 10px; cursor: pointer; padding: 2px 0; }
+      .hvac-big-temp { font-size: 2.2rem; font-weight: 800; line-height: 1; color: var(--primary-text-color); }
       .hvac-target-group { display: flex; flex-direction: column; }
-      .target-label { font-size: 0.65rem; letter-spacing: 0.08em; color: var(--secondary-text-color); }
-      .target-val { font-size: 1.1rem; font-weight: 700; color: var(--primary-color); }
-      .hvac-telemetry-row { display: flex; gap: 8px; flex-wrap: wrap; }
-      .hvac-metric { display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; color: var(--primary-text-color); }
+      .target-label { font-size: 0.6rem; letter-spacing: 0.08em; color: var(--secondary-text-color); }
+      .target-val { font-size: 1rem; font-weight: 700; color: var(--primary-color); }
+      .hvac-telemetry-row { display: flex; gap: 6px; flex-wrap: wrap; }
+      .hvac-metric { display: flex; align-items: center; gap: 3px; background: rgba(0,0,0,0.25); padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; color: var(--primary-text-color); }
       .hvac-metric.overshoot { background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.4); }
-      .filter-section { display: flex; flex-direction: column; gap: 4px; }
-      .filter-header { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--secondary-text-color); }
-      .filter-bar-track { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
-      .filter-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+      .filter-section { display: flex; flex-direction: column; gap: 3px; }
+      .filter-header { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--secondary-text-color); }
+      .filter-bar-track { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+      .filter-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
       .filter-bar-fill.ok { background: #4ade80; }
       .filter-bar-fill.warning { background: #facc15; }
       .filter-bar-fill.expired { background: #ef4444; }
-      .hvac-card-actions { display: flex; gap: 8px; margin-top: 4px; }
-      .hvac-btn { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: var(--primary-text-color); border-radius: 12px; padding: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s; }
+      .hvac-card-actions { display: flex; gap: 6px; margin-top: 2px; }
+      .hvac-btn { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: var(--primary-text-color); border-radius: 10px; padding: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: background 0.2s; }
       .hvac-btn:hover { background: rgba(255,255,255,0.15); }
-      .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 6px 10px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
+      .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 5px 8px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
       .hvac-mode-btn.active { background: var(--primary-color, #2196f3); color: white; }
-      .global-preset-badge { display: flex; align-items: center; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+      .global-preset-badge { display: flex; align-items: center; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
       .status-chip.active-cool { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
       .status-chip.active-heat { background: rgba(249, 115, 22, 0.2); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.4); }
       .status-chip.active-fan { background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); }
