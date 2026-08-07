@@ -4,21 +4,22 @@
 [![version](https://img.shields.io/github/v/release/GBear09/passable-appliance-card)](https://github.com/GBear09/passable-appliance-card/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A dynamic, consolidated, universal custom card for Home Assistant supporting 5 different major home appliances:
+A dynamic, consolidated, universal custom card for Home Assistant supporting 6 different major home appliances & mechanical systems:
 
 1. **🧊 Refrigerator & Freezer**: French door graphic layout with water dispenser cutout screen & lever, bottom freezer drawer, door open alerts, and bottom-sheet dispenser controls popup modal with hot water quick presets (Cocoa 150°, Tea 170°, Soup 185°), water filter indicator, and ice maker toggle switch.
 2. **🍳 Induction Range & Oven**: 5-burner cooktop graphic layout with exact burner placement percentages, bridge sync lines, top oven control panel with SVG knobs & screen, upper/lower oven doors, and oven control popups with **Oven Light** toggle switch.
 3. **🧺 Laundry Center**: Vertical stack washer & dryer cards with top control panel (knobs & time screen), spinning drum animation, cycle stage badges, and remaining time countdowns. Supports `sensor`, `select`, and `input_select` operation entities.
 4. **💧 Tankless Water Heater (Navien)**: Vector SVG tankless unit graphic with inlet/outlet temperature badges, animated water flow lines, heating radial pulse animation, flow rate (GPM) & gas usage (BTU/h) progress bars, recirculation control button with last-run history, and a customizable **Flush & Descale Guide** modal window.
 5. **🚿 Smart Hose Timer**: Circular arc ring timer dial slider (1–120 MIN), watering action button with timestamp, gear settings drawer, battery % status chip, and Next/Last watering telemetry cards.
+6. **❄️🔥 HVAC Systems**: Dual heat pump system card (Downstairs & Upstairs) with real-time temperature, humidity, active preset, overshoot buffer indicators, air filter remaining life progress bars, and modal drawers for thermostat setpoints and filter replacement guides.
 
 ---
 
 ## 📸 Screenshots
 
-| Refrigerator | Induction Range | Laundry Center | Water Heater | Hose Timer |
-|---|---|---|---|---|
-| French door graphic & dispenser modal | 5-burner cooktop & oven popups with light | Vertical stack & spinning drum | SVG tankless unit & flush guide | Ring dial slider & watering control |
+| Refrigerator | Induction Range | Laundry Center | Water Heater | Hose Timer | HVAC Systems |
+|---|---|---|---|---|---|
+| French door graphic & dispenser modal | 5-burner cooktop & oven popups with light | Vertical stack & spinning drum | SVG tankless unit & flush guide | Ring dial slider & watering control | Dual heat pumps, overshoot & filter guide |
 
 ---
 
@@ -35,7 +36,35 @@ A dynamic, consolidated, universal custom card for Home Assistant supporting 5 d
 
 ## ⚙️ Configuration Examples
 
-### 1. Refrigerator Example
+### 1. HVAC Systems Example (Dual Heat Pumps & Helpers)
+```yaml
+type: custom:passable-appliance-card
+appliance_type: hvac
+title: HVAC Systems
+
+# Downstairs Unit
+downstairs_climate: climate.downstairs
+downstairs_climate_hk: climate.downstairs_hk
+downstairs_setpoint_preset: input_select.hvac_setpoint_preset_downstairs
+downstairs_cool_overshoot: input_number.hvac_cool_overshoot_downstairs
+downstairs_heat_overshoot: input_number.hvac_heat_overshoot_downstairs
+downstairs_filter_hours: sensor.downstairs_hvac_filter_hours
+downstairs_filter_life: input_number.downstairs_hvac_filter_life_limit
+
+# Upstairs Unit
+upstairs_climate: climate.upstairs
+upstairs_climate_hk: climate.upstairs_hk
+upstairs_setpoint_preset: input_select.hvac_setpoint_preset_upstairs
+upstairs_cool_overshoot: input_number.hvac_cool_overshoot_upstairs
+upstairs_heat_overshoot: input_number.hvac_heat_overshoot_upstairs
+upstairs_filter_hours: sensor.upstairs_hvac_filter_hours
+upstairs_filter_life: input_number.upstairs_hvac_filter_life_limit
+
+# Global Helpers
+global_setpoint_preset: input_select.hvac_setpoint_preset_global
+```
+
+### 2. Refrigerator Example
 ```yaml
 type: custom:passable-appliance-card
 appliance_type: refrigerator
@@ -56,7 +85,7 @@ hot_water_status_time: sensor.dt507030_hot_water_status_time_until_ready
 hot_water_cancel_switch: switch.dt507030_k_cup_hot_water
 ```
 
-### 2. Tankless Water Heater Example (Customizable Flush Guide & Power Control)
+### 3. Tankless Water Heater Example (Customizable Flush Guide & Power Control)
 ```yaml
 type: custom:passable-appliance-card
 appliance_type: water_heater
@@ -80,7 +109,7 @@ flush_materials:
   - "5 Gallon Bucket"
 ```
 
-### 3. Induction Range & Oven Example
+### 4. Induction Range & Oven Example
 ```yaml
 type: custom:passable-appliance-card
 appliance_type: induction_range
@@ -93,7 +122,7 @@ upper_light_entity: select.sqdr174020p_light
 lower_light_entity: select.sqdr174020p_lower_oven_light
 ```
 
-### 4. Laundry Center Example (LG ThinQ & Universal Stack with Power Toggles)
+### 5. Laundry Center Example (LG ThinQ & Universal Stack with Power Toggles)
 ```yaml
 type: custom:passable-appliance-card
 appliance_type: laundry
@@ -108,7 +137,7 @@ dryer_operation: select.dryer_operation
 dryer_remaining_time: sensor.dryer_remaining_time
 ```
 
-### 5. Smart Hose Timer Example
+### 6. Smart Hose Timer Example
 ```yaml
 type: custom:passable-appliance-card
 appliance_type: smart_hose_timer

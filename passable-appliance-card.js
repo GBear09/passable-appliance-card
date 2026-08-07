@@ -1,19 +1,20 @@
 /**
  * Passable Appliance Card
- * Version: 1.0.14
+ * Version: 1.1.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
  * Restores 100% exact graphical layouts, SVGs, animations, embedded controls,
- * ring sliders, telemetry bars, 24-hour recirc timeline, and custom popups for ALL 5 appliances:
+ * ring sliders, telemetry bars, 24-hour recirc timeline, and custom popups for ALL 6 appliances & mechanical systems:
  *  1. Refrigerator & Freezer (Scoped CSS French Door + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
+ *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.0.18";
+const CARD_VERSION = "1.1.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -34,6 +35,7 @@ class PassableApplianceCard extends LitElement {
       config: {},
       _popup: { state: true },
       _popupOven: { state: true },
+      _hvacModal: { state: true },
       _showFlushGuide: { state: true },
       _showRecircSettings: { state: true },
       _showHoseSettings: { state: true },
@@ -49,6 +51,7 @@ class PassableApplianceCard extends LitElement {
     super();
     this._popup = null;
     this._popupOven = null;
+    this._hvacModal = null;
     this._showFlushGuide = false;
     this._showRecircSettings = false;
     this._showHoseSettings = false;
@@ -113,6 +116,28 @@ class PassableApplianceCard extends LitElement {
           left_rear: `binary_sensor.${p}_cooktop_status_left_rear_synchronized`,
         },
       };
+    }
+
+    // Auto-populate HVAC entities if appliance_type is hvac or device_prefix/auto-detect is used
+    if (c.appliance_type === "hvac" || (c.device_prefix && (c.appliance_type === "hvac" || c.upstairs_climate || c.downstairs_climate))) {
+      const p = c.device_prefix || "hvac";
+      c.downstairs_climate = c.downstairs_climate || (c.device_prefix ? `climate.${p}_downstairs` : "climate.downstairs");
+      c.downstairs_climate_hk = c.downstairs_climate_hk || (c.device_prefix ? `climate.${p}_downstairs_hk` : "climate.downstairs_hk");
+      c.downstairs_setpoint_preset = c.downstairs_setpoint_preset || (c.device_prefix ? `input_select.${p}_setpoint_preset_downstairs` : "input_select.hvac_setpoint_preset_downstairs");
+      c.downstairs_heat_overshoot = c.downstairs_heat_overshoot || (c.device_prefix ? `input_number.${p}_heat_overshoot_downstairs` : "input_number.hvac_heat_overshoot_downstairs");
+      c.downstairs_cool_overshoot = c.downstairs_cool_overshoot || (c.device_prefix ? `input_number.${p}_cool_overshoot_downstairs` : "input_number.hvac_cool_overshoot_downstairs");
+      c.downstairs_filter_hours = c.downstairs_filter_hours || (c.device_prefix ? `sensor.${p}_downstairs_filter_hours` : "sensor.downstairs_hvac_filter_hours");
+      c.downstairs_filter_life = c.downstairs_filter_life || (c.device_prefix ? `input_number.${p}_downstairs_filter_life_limit` : "input_number.downstairs_hvac_filter_life_limit");
+
+      c.upstairs_climate = c.upstairs_climate || (c.device_prefix ? `climate.${p}_upstairs` : "climate.upstairs");
+      c.upstairs_climate_hk = c.upstairs_climate_hk || (c.device_prefix ? `climate.${p}_upstairs_hk` : "climate.upstairs_hk");
+      c.upstairs_setpoint_preset = c.upstairs_setpoint_preset || (c.device_prefix ? `input_select.${p}_setpoint_preset_upstairs` : "input_select.hvac_setpoint_preset_upstairs");
+      c.upstairs_heat_overshoot = c.upstairs_heat_overshoot || (c.device_prefix ? `input_number.${p}_heat_overshoot_upstairs` : "input_number.hvac_heat_overshoot_upstairs");
+      c.upstairs_cool_overshoot = c.upstairs_cool_overshoot || (c.device_prefix ? `input_number.${p}_cool_overshoot_upstairs` : "input_number.hvac_cool_overshoot_upstairs");
+      c.upstairs_filter_hours = c.upstairs_filter_hours || (c.device_prefix ? `sensor.${p}_upstairs_filter_hours` : "sensor.upstairs_hvac_filter_hours");
+      c.upstairs_filter_life = c.upstairs_filter_life || (c.device_prefix ? `input_number.${p}_upstairs_filter_life_limit` : "input_number.upstairs_hvac_filter_life_limit");
+
+      c.global_setpoint_preset = c.global_setpoint_preset || (c.device_prefix ? `input_select.${p}_setpoint_preset_global` : "input_select.hvac_setpoint_preset_global");
     }
 
     this.config = c;
@@ -274,6 +299,9 @@ class PassableApplianceCard extends LitElement {
       return type;
     }
 
+    if (this.config.upstairs_climate || this.config.downstairs_climate || this.config.climate) {
+      return "hvac";
+    }
     if (this.config.valve_entity || this.config.bhyve_mode !== undefined) {
       return "smart_hose_timer";
     }
@@ -426,6 +454,8 @@ class PassableApplianceCard extends LitElement {
       case "smart_hose_timer":
       case "hose_timer":
         return this._renderSmartHoseTimer();
+      case "hvac":
+        return this._renderHVAC();
       default:
         return this._renderRefrigerator();
     }
@@ -1601,6 +1631,354 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
+  // 6. HVAC SYSTEMS (DUAL HEAT PUMPS & HELPERS)
+  // ==========================================
+  _renderHVAC() {
+    const c = this.config;
+    const globalPresetObj = this._getEntity(c.global_setpoint_preset);
+
+    return html`
+      <ha-card>
+        <div class="header">
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+            <h1 class="title">
+              <ha-icon icon="mdi:hvac" style="margin-right:8px; color: var(--primary-color);"></ha-icon>
+              ${c.title || "HVAC Systems"}
+            </h1>
+            ${globalPresetObj && globalPresetObj.state !== "unavailable"
+              ? html`
+                  <div class="global-preset-badge">
+                    <ha-icon icon="mdi:tune-vertical" style="--mdc-icon-size:16px; margin-right:4px;"></ha-icon>
+                    <span>${globalPresetObj.state}</span>
+                  </div>
+                `
+              : ""}
+          </div>
+          <div class="header-subtitle-row">
+            <p class="subtitle">Dual Heat Pump Systems & Comfort Control</p>
+          </div>
+        </div>
+
+        <div class="card-content">
+          <div class="hvac-grid">
+            ${this._renderHvacUnitCard("downstairs", "Downstairs & Basement", "mdi:home-floor-1", c.downstairs_climate || "climate.downstairs", c.downstairs_climate_hk || "climate.downstairs_hk")}
+            ${this._renderHvacUnitCard("upstairs", "Upstairs & Attic", "mdi:home-floor-2", c.upstairs_climate || "climate.upstairs", c.upstairs_climate_hk || "climate.upstairs_hk")}
+          </div>
+        </div>
+
+        ${this._renderHvacModal()}
+      </ha-card>
+    `;
+  }
+
+  _renderHvacUnitCard(unitKey, title, icon, defaultClimate, defaultHkClimate) {
+    const c = this.config;
+    const climateId = c[`${unitKey}_climate`] || defaultClimate;
+    const hkClimateId = c[`${unitKey}_climate_hk`] || defaultHkClimate;
+    const presetId = c[`${unitKey}_setpoint_preset`] || `input_select.hvac_setpoint_preset_${unitKey}`;
+    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || `input_number.hvac_heat_overshoot_${unitKey}`;
+    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || `input_number.hvac_cool_overshoot_${unitKey}`;
+    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.${unitKey}_hvac_filter_hours`;
+    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.${unitKey}_hvac_filter_life_limit`;
+
+    const climate = this._getEntity(climateId);
+    const preset = this._getEntity(presetId);
+    const heatOvershoot = this._getEntity(heatOvershootId);
+    const coolOvershoot = this._getEntity(coolOvershootId);
+    const filterHours = this._getEntity(filterHoursId);
+    const filterLife = this._getEntity(filterLifeId);
+
+    const hvacAction = climate.attributes.hvac_action || climate.state || "idle";
+    const currentTemp = climate.attributes.current_temperature ?? "--";
+    const targetTemp = climate.attributes.temperature ?? climate.attributes.target_temp_high ?? climate.attributes.target_temp_low ?? "--";
+    const humidity = climate.attributes.current_humidity ?? "--";
+
+    let stateClass = "idle";
+    let stateLabel = "IDLE";
+    let stateIcon = "mdi:hvac-off";
+
+    if (hvacAction === "cooling") {
+      stateClass = "active-cool";
+      stateLabel = "COOLING";
+      stateIcon = "mdi:snowflake";
+    } else if (hvacAction === "heating") {
+      stateClass = "active-heat";
+      stateLabel = "HEATING";
+      stateIcon = "mdi:fire";
+    } else if (hvacAction === "fan") {
+      stateClass = "active-fan";
+      stateLabel = "FAN ONLY";
+      stateIcon = "mdi:fan";
+    } else if (climate.state === "off") {
+      stateClass = "power-off";
+      stateLabel = "OFF";
+      stateIcon = "mdi:power";
+    }
+
+    // Filter calculations
+    const remHours = parseFloat(filterHours.state) || 0;
+    const maxHours = parseFloat(filterLife.state) || 500;
+    const filterPct = Math.max(0, Math.min(100, Math.round((remHours / maxHours) * 100)));
+    const filterClass = filterPct < 15 ? "expired" : filterPct < 35 ? "warning" : "ok";
+
+    // Overshoot display
+    const activeOvershoot = hvacAction === "cooling" && coolOvershoot.state ? `Cool +${coolOvershoot.state}°F` : (hvacAction === "heating" && heatOvershoot.state ? `Heat -${heatOvershoot.state}°F` : null);
+
+    return html`
+      <div class="hvac-unit-card">
+        <div class="hvac-unit-header">
+          <div class="hvac-unit-title">
+            <ha-icon icon="${icon}"></ha-icon>
+            <span>${title}</span>
+          </div>
+          <div class="status-chip ${stateClass}">
+            <ha-icon icon="${stateIcon}" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
+            ${stateLabel}
+          </div>
+        </div>
+
+        <div class="hvac-temp-row" @click=${() => this._showMoreInfo(climateId)}>
+          <div class="hvac-big-temp">${currentTemp}°</div>
+          <div class="hvac-target-group">
+            <span class="target-label">TARGET</span>
+            <span class="target-val">${targetTemp}°</span>
+          </div>
+        </div>
+
+        <div class="hvac-telemetry-row">
+          <div class="hvac-metric">
+            <ha-icon icon="mdi:water-percent"></ha-icon>
+            <span>${humidity}% RH</span>
+          </div>
+          ${preset && preset.state !== "unavailable"
+            ? html`
+                <div class="hvac-metric">
+                  <ha-icon icon="mdi:bookmark-outline"></ha-icon>
+                  <span>${preset.state}</span>
+                </div>
+              `
+            : ""}
+          ${activeOvershoot
+            ? html`
+                <div class="hvac-metric overshoot">
+                  <ha-icon icon="mdi:lightning-bolt"></ha-icon>
+                  <span>${activeOvershoot}</span>
+                </div>
+              `
+            : ""}
+        </div>
+
+        <div class="filter-section">
+          <div class="filter-header">
+            <span>Filter Life</span>
+            <span>${remHours > 0 ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}</span>
+          </div>
+          <div class="filter-bar-track">
+            <div class="filter-bar-fill ${filterClass}" style="width: ${filterPct}%;"></div>
+          </div>
+        </div>
+
+        <div class="hvac-card-actions">
+          <button class="hvac-btn" @click=${() => this._showHvacModal(unitKey, "setpoints")}>
+            <ha-icon icon="mdi:tune"></ha-icon>
+            <span>Setpoints</span>
+          </button>
+          <button class="hvac-btn" @click=${() => this._showHvacModal(unitKey, "filter")}>
+            <ha-icon icon="mdi:air-filter"></ha-icon>
+            <span>Filter</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  _showHvacModal(unitKey, type) {
+    this._fireHaptic("light");
+    this._hvacModal = { unitKey, type };
+  }
+
+  _closeHvacModal() {
+    this._fireHaptic("light");
+    this._hvacModal = null;
+  }
+
+  _setHvacMode(climateEntity, mode) {
+    this._fireHaptic("medium");
+    this.hass.callService("climate", "set_hvac_mode", {
+      entity_id: climateEntity,
+      hvac_mode: mode,
+    });
+  }
+
+  _adjustHvacTemp(climateEntity, delta) {
+    this._fireHaptic("light");
+    const climate = this._getEntity(climateEntity);
+    const curTarget = parseFloat(climate.attributes.temperature) || 70;
+    this.hass.callService("climate", "set_temperature", {
+      entity_id: climateEntity,
+      temperature: curTarget + delta,
+    });
+  }
+
+  _adjustNumberEntity(entityId, delta) {
+    this._fireHaptic("light");
+    const numObj = this._getEntity(entityId);
+    const curVal = parseFloat(numObj.state) || 0;
+    const newVal = Math.max(0, Math.round((curVal + delta) * 10) / 10);
+    this.hass.callService("input_number", "set_value", {
+      entity_id: entityId,
+      value: newVal,
+    });
+  }
+
+  _resetHvacFilter(filterHoursId, filterLifeId) {
+    this._fireHaptic("heavy");
+    const filterLife = this._getEntity(filterLifeId);
+    const maxVal = parseFloat(filterLife.state) || 500;
+    this.hass.callService("input_number", "set_value", {
+      entity_id: filterHoursId,
+      value: maxVal,
+    }).catch(() => {
+      this.hass.callService("sensor", "set_value", {
+        entity_id: filterHoursId,
+        value: maxVal,
+      });
+    });
+  }
+
+  _renderHvacModal() {
+    if (!this._hvacModal) return html``;
+
+    const { unitKey, type } = this._hvacModal;
+    const c = this.config;
+    const unitTitle = unitKey === "downstairs" ? "Downstairs & Basement" : "Upstairs & Attic";
+    const climateId = c[`${unitKey}_climate`] || `climate.${unitKey}`;
+    const climateHkId = c[`${unitKey}_climate_hk`] || `climate.${unitKey}_hk`;
+    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || `input_number.hvac_heat_overshoot_${unitKey}`;
+    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || `input_number.hvac_cool_overshoot_${unitKey}`;
+    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.${unitKey}_hvac_filter_hours`;
+    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.${unitKey}_hvac_filter_life_limit`;
+
+    const climate = this._getEntity(climateId);
+    const heatOvershoot = this._getEntity(heatOvershootId);
+    const coolOvershoot = this._getEntity(coolOvershootId);
+    const filterHours = this._getEntity(filterHoursId);
+    const filterLife = this._getEntity(filterLifeId);
+
+    return html`
+      <div class="modal-overlay" @click=${() => this._closeHvacModal()}>
+        <div class="modal-content" @click=${(e) => e.stopPropagation()}>
+          <div class="modal-header">
+            <h2>${unitTitle} - ${type === "setpoints" ? "Setpoints & Overshoot" : "Filter Maintenance"}</h2>
+            <button class="close-btn" @click=${() => this._closeHvacModal()}>
+              <ha-icon icon="mdi:close"></ha-icon>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            ${type === "setpoints"
+              ? html`
+                  <div class="control-row" style="margin-bottom:16px;">
+                    <span class="control-label">HVAC Mode</span>
+                    <div style="display:flex; gap:6px;">
+                      ${["cool", "heat", "auto", "off"].map(
+                        (m) => html`
+                          <button
+                            class="hvac-mode-btn ${climate.state === m ? "active" : ""}"
+                            @click=${() => this._setHvacMode(climateId, m)}
+                          >
+                            ${m.toUpperCase()}
+                          </button>
+                        `
+                      )}
+                    </div>
+                  </div>
+
+                  <div class="control-row" style="margin-bottom:16px;">
+                    <span class="control-label">Target Setpoint</span>
+                    <div class="step-controller-pill">
+                      <button class="pill-btn" @click=${() => this._adjustHvacTemp(climateId, -0.5)}>-</button>
+                      <span class="pill-value">${climate.attributes.temperature || 70}°F</span>
+                      <button class="pill-btn" @click=${() => this._adjustHvacTemp(climateId, 0.5)}>+</button>
+                    </div>
+                  </div>
+
+                  <div class="divider"></div>
+                  <h4 style="margin:8px 0; color:var(--primary-color);">Overshoot Threshold Helpers</h4>
+
+                  <div class="control-row" style="margin-bottom:12px;">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:snowflake"></ha-icon>
+                      <span class="control-label">Cooling Overshoot Buffer</span>
+                    </div>
+                    <div class="step-controller-pill">
+                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, -0.5)}>-</button>
+                      <span class="pill-value">+${coolOvershoot.state || 0}°F</span>
+                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, 0.5)}>+</button>
+                    </div>
+                  </div>
+
+                  <div class="control-row" style="margin-bottom:12px;">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:fire"></ha-icon>
+                      <span class="control-label">Heating Overshoot Buffer</span>
+                    </div>
+                    <div class="step-controller-pill">
+                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, -0.5)}>-</button>
+                      <span class="pill-value">-${heatOvershoot.state || 0}°F</span>
+                      <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, 0.5)}>+</button>
+                    </div>
+                  </div>
+
+                  <div class="divider"></div>
+                  <button class="recirc-button" style="width:100%; margin-top:8px;" @click=${() => this._showMoreInfo(climateHkId || climateId)}>
+                    <ha-icon icon="mdi:homekit"></ha-icon>
+                    <span>OPEN HOMEKIT / ECOBEE CONTROL</span>
+                  </button>
+                `
+              : html`
+                  <div class="materials-section">
+                    <h3><ha-icon icon="mdi:air-filter"></ha-icon> Air Filter Status</h3>
+                    <p>Remaining Run Time: <strong>${filterHours.state || 0} Hours</strong></p>
+                    <p>Max Recommended Life: <strong>${filterLife.state || 500} Hours</strong></p>
+                  </div>
+
+                  <div class="step-timeline">
+                    <div class="step">
+                      <div class="step-num">1</div>
+                      <div class="step-content">
+                        <h4>Power Off System</h4>
+                        <p>Turn off unit power at thermostat or breaker before replacing filter.</p>
+                      </div>
+                    </div>
+                    <div class="step">
+                      <div class="step-num">2</div>
+                      <div class="step-content">
+                        <h4>Replace Filter Slot</h4>
+                        <p>Slide out old filter. Insert clean filter matching airflow directional arrows.</p>
+                      </div>
+                    </div>
+                    <div class="step">
+                      <div class="step-num">3</div>
+                      <div class="step-content">
+                        <h4>Reset Hours Counter</h4>
+                        <p>Tap the reset button below to restore filter lifespan back to full 500 hours.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button class="recirc-button active" style="width:100%; margin-top:20px;" @click=${() => this._resetHvacFilter(filterHoursId, filterLifeId)}>
+                    <ha-icon icon="mdi:refresh"></ha-icon>
+                    <span>RESET FILTER LIFE COUNTER</span>
+                  </button>
+                `}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ==========================================
   // STYLES & GRAPHIC CSS
   // ==========================================
   static get styles() {
@@ -1900,6 +2278,37 @@ class PassableApplianceCard extends LitElement {
       .step-content h4 { margin: 0 0 4px 0; font-size: 1.05rem; }
       .step-content p { margin: 0 0 4px 0; font-size: 0.9rem; color: var(--secondary-text-color); line-height: 1.4; }
 
+      /* HVAC SPECIFIC STYLES */
+      .hvac-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      @media (max-width: 768px) { .hvac-grid { grid-template-columns: 1fr; } }
+      .hvac-unit-card { background: var(--secondary-background-color, rgba(128,128,128,0.12)); border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--divider-color, rgba(255,255,255,0.08)); }
+      .hvac-unit-header { display: flex; justify-content: space-between; align-items: center; }
+      .hvac-unit-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.05rem; }
+      .hvac-temp-row { display: flex; align-items: baseline; gap: 12px; cursor: pointer; padding: 4px 0; }
+      .hvac-big-temp { font-size: 2.8rem; font-weight: 800; line-height: 1; color: var(--primary-text-color); }
+      .hvac-target-group { display: flex; flex-direction: column; }
+      .target-label { font-size: 0.65rem; letter-spacing: 0.08em; color: var(--secondary-text-color); }
+      .target-val { font-size: 1.1rem; font-weight: 700; color: var(--primary-color); }
+      .hvac-telemetry-row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .hvac-metric { display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; color: var(--primary-text-color); }
+      .hvac-metric.overshoot { background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.4); }
+      .filter-section { display: flex; flex-direction: column; gap: 4px; }
+      .filter-header { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--secondary-text-color); }
+      .filter-bar-track { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+      .filter-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+      .filter-bar-fill.ok { background: #4ade80; }
+      .filter-bar-fill.warning { background: #facc15; }
+      .filter-bar-fill.expired { background: #ef4444; }
+      .hvac-card-actions { display: flex; gap: 8px; margin-top: 4px; }
+      .hvac-btn { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: var(--primary-text-color); border-radius: 12px; padding: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s; }
+      .hvac-btn:hover { background: rgba(255,255,255,0.15); }
+      .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 6px 10px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
+      .hvac-mode-btn.active { background: var(--primary-color, #2196f3); color: white; }
+      .global-preset-badge { display: flex; align-items: center; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+      .status-chip.active-cool { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+      .status-chip.active-heat { background: rgba(249, 115, 22, 0.2); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.4); }
+      .status-chip.active-fan { background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); }
+
       @media (max-width: 768px) {
         .popup-overlay { align-items: flex-end; }
         .popup-content { width: 100%; max-width: none; border-radius: 24px 24px 0 0; transform: translateY(100%); padding-bottom: max(24px, env(safe-area-inset-bottom, 24px)); }
@@ -1993,6 +2402,7 @@ class PassableApplianceCardEditor extends LitElement {
             <option value="laundry">Laundry (Washer & Dryer)</option>
             <option value="water_heater">Water Heater</option>
             <option value="smart_hose_timer">Smart Hose Timer</option>
+            <option value="hvac">HVAC Systems</option>
           </select>
         </div>
 
@@ -2000,7 +2410,7 @@ class PassableApplianceCardEditor extends LitElement {
         <div class="form-group">
           <label class="form-label">Device Prefix (Optional Shortcut)</label>
           <ha-textfield
-            label="Device Prefix (e.g. dt507030)"
+            label="Device Prefix (e.g. dt507030 or hvac)"
             .value=${this.config.device_prefix || ""}
             .configValue=${"device_prefix"}
             @input=${this._onFieldChange}
@@ -2024,6 +2434,142 @@ class PassableApplianceCardEditor extends LitElement {
         ${applianceType === "smart_hose_timer"
           ? this._renderSmartHoseTimerEditor()
           : ""}
+        ${applianceType === "hvac"
+          ? this._renderHvacEditor()
+          : ""}
+      </div>
+    `;
+  }
+
+  _renderHvacEditor() {
+    return html`
+      <div class="section-box">
+        <h3>Downstairs HVAC Entities</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "climate" } }}
+          .value=${this.config.downstairs_climate || ""}
+          .configValue=${"downstairs_climate"}
+          .label=${"Downstairs Climate Entity (Ecobee)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "climate" } }}
+          .value=${this.config.downstairs_climate_hk || ""}
+          .configValue=${"downstairs_climate_hk"}
+          .label=${"Downstairs HomeKit Climate Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["input_select", "select"] } }}
+          .value=${this.config.downstairs_setpoint_preset || ""}
+          .configValue=${"downstairs_setpoint_preset"}
+          .label=${"Downstairs Setpoint Preset Helper"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["input_number", "number"] } }}
+          .value=${this.config.downstairs_cool_overshoot || ""}
+          .configValue=${"downstairs_cool_overshoot"}
+          .label=${"Downstairs Cool Overshoot Helper"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["input_number", "number"] } }}
+          .value=${this.config.downstairs_heat_overshoot || ""}
+          .configValue=${"downstairs_heat_overshoot"}
+          .label=${"Downstairs Heat Overshoot Helper"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.downstairs_filter_hours || ""}
+          .configValue=${"downstairs_filter_hours"}
+          .label=${"Downstairs Filter Life Hours Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+      </div>
+
+      <div class="section-box" style="margin-top:12px;">
+        <h3>Upstairs HVAC Entities</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "climate" } }}
+          .value=${this.config.upstairs_climate || ""}
+          .configValue=${"upstairs_climate"}
+          .label=${"Upstairs Climate Entity (Ecobee)"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "climate" } }}
+          .value=${this.config.upstairs_climate_hk || ""}
+          .configValue=${"upstairs_climate_hk"}
+          .label=${"Upstairs HomeKit Climate Entity"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["input_select", "select"] } }}
+          .value=${this.config.upstairs_setpoint_preset || ""}
+          .configValue=${"upstairs_setpoint_preset"}
+          .label=${"Upstairs Setpoint Preset Helper"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["input_number", "number"] } }}
+          .value=${this.config.upstairs_cool_overshoot || ""}
+          .configValue=${"upstairs_cool_overshoot"}
+          .label=${"Upstairs Cool Overshoot Helper"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["input_number", "number"] } }}
+          .value=${this.config.upstairs_heat_overshoot || ""}
+          .configValue=${"upstairs_heat_overshoot"}
+          .label=${"Upstairs Heat Overshoot Helper"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: "sensor" } }}
+          .value=${this.config.upstairs_filter_hours || ""}
+          .configValue=${"upstairs_filter_hours"}
+          .label=${"Upstairs Filter Life Hours Sensor"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
+      </div>
+
+      <div class="section-box" style="margin-top:12px;">
+        <h3>Global HVAC Helpers</h3>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ entity: { domain: ["input_select", "select"] } }}
+          .value=${this.config.global_setpoint_preset || ""}
+          .configValue=${"global_setpoint_preset"}
+          .label=${"Global Setpoint Preset Helper"}
+          @value-changed=${this._onFieldChange}
+        ></ha-selector>
       </div>
     `;
   }
