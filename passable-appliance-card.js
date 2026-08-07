@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.3
+ * Version: 1.1.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.1.3";
+const CARD_VERSION = "1.1.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1791,66 +1791,35 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <div class="hvac-unit-card ${stateClass}" style="${dynamicCardStyle}">
-        <div class="hvac-unit-header">
-          <div class="hvac-unit-title">
-            <ha-icon icon="${icon}"></ha-icon>
-            <span>${title}</span>
-          </div>
-          <div class="status-chip ${stateClass}">
-            <ha-icon icon="${stateIcon}" style="--mdc-icon-size:13px; margin-right:2px;"></ha-icon>
-            ${stateLabel}
-          </div>
-        </div>
-
-        <div class="hvac-temp-row" @click=${() => this._showMoreInfo(climateId)}>
-          <div class="hvac-big-temp">${currentTemp}°</div>
-          <div class="hvac-target-group">
-            <span class="target-label">TARGET</span>
-            <span class="target-val">${targetTemp}°</span>
+        <!-- Left Section: Icon + Title + Status Badges -->
+        <div class="hvac-compact-left">
+          <ha-icon icon="${icon}" class="hvac-unit-icon"></ha-icon>
+          <div class="hvac-compact-title-group">
+            <span class="hvac-compact-name">${title}</span>
+            <div class="hvac-compact-meta">
+              <span class="status-chip ${stateClass}">
+                <ha-icon icon="${stateIcon}" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>
+                ${stateLabel}
+              </span>
+              ${activePresetName ? html`<span class="hvac-mini-badge">🔖 ${activePresetName}</span>` : ""}
+              ${activeOvershoot ? html`<span class="hvac-mini-badge overshoot">⚡ ${activeOvershoot}</span>` : ""}
+            </div>
           </div>
         </div>
 
-        <div class="hvac-telemetry-row">
-          <div class="hvac-metric">
-            <ha-icon icon="mdi:water-percent" style="--mdc-icon-size:14px;"></ha-icon>
-            <span>${humidity}% RH</span>
-          </div>
-          ${activePresetName
-            ? html`
-                <div class="hvac-metric" @click=${() => this._showHvacModal(unitKey, "setpoints")} style="cursor:pointer;">
-                  <ha-icon icon="mdi:bookmark-outline" style="--mdc-icon-size:14px;"></ha-icon>
-                  <span style="text-transform: capitalize;">${activePresetName}</span>
-                </div>
-              `
-            : ""}
-          ${activeOvershoot
-            ? html`
-                <div class="hvac-metric overshoot" @click=${() => this._showHvacModal(unitKey, "setpoints")} style="cursor:pointer;">
-                  <ha-icon icon="mdi:lightning-bolt" style="--mdc-icon-size:14px;"></ha-icon>
-                  <span>${activeOvershoot}</span>
-                </div>
-              `
-            : ""}
+        <!-- Center Section: Current Temp + Target Setpoint + Humidity -->
+        <div class="hvac-compact-center" @click=${() => this._showMoreInfo(climateId)}>
+          <div class="hvac-compact-temp">${currentTemp}°</div>
+          <div class="hvac-compact-subtemp">Set ${targetTemp}° • ${humidity}% RH</div>
         </div>
 
-        <div class="filter-section">
-          <div class="filter-header">
-            <span>Filter Life</span>
-            <span>${!isNaN(remHours) ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}</span>
-          </div>
-          <div class="filter-bar-track">
-            <div class="filter-bar-fill ${filterClass}" style="width: ${filterPct}%;"></div>
-          </div>
-        </div>
-
-        <div class="hvac-card-actions">
-          <button class="hvac-btn" @click=${() => this._showHvacModal(unitKey, "setpoints")}>
-            <ha-icon icon="mdi:tune" style="--mdc-icon-size:15px;"></ha-icon>
-            <span>Setpoints</span>
+        <!-- Right Section: Compact Action Buttons -->
+        <div class="hvac-compact-actions">
+          <button class="hvac-icon-btn" title="Setpoints & Presets" @click=${() => this._showHvacModal(unitKey, "setpoints")}>
+            <ha-icon icon="mdi:tune"></ha-icon>
           </button>
-          <button class="hvac-btn" @click=${() => this._showHvacModal(unitKey, "filter")}>
-            <ha-icon icon="mdi:air-filter" style="--mdc-icon-size:15px;"></ha-icon>
-            <span>Filter</span>
+          <button class="hvac-icon-btn ${filterClass}" title="Filter Life: ${!isNaN(remHours) ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}" @click=${() => this._showHvacModal(unitKey, "filter")}>
+            <ha-icon icon="mdi:air-filter"></ha-icon>
           </button>
         </div>
       </div>
@@ -2426,7 +2395,7 @@ class PassableApplianceCard extends LitElement {
       .popup-overlay.visible { opacity: 1; visibility: visible; }
       .popup-content { background-color: var(--ha-card-background, var(--card-background-color, white)); padding: 20px 24px 24px; border-radius: 24px; width: 90%; max-width: 450px; max-height: 90vh; overflow-y: auto; color: var(--primary-text-color); display: flex; flex-direction: column; gap: 16px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.3s ease, transform 0.4s ease; }
       .popup-content.visible { opacity: 1; transform: translateY(0) scale(1); }
-      .drag-handle { width: 36px; height: 5px; background-color: #888; border-radius: 3px; margin: -8px auto 16px auto; }
+      .drag-handle { display: none; }
       
       .popup-header {
         display: flex; align-items: center; justify-content: flex-start; gap: 14px; width: 100%;
@@ -2471,40 +2440,43 @@ class PassableApplianceCard extends LitElement {
       .step-content h4 { margin: 0 0 4px 0; font-size: 1.05rem; }
       .step-content p { margin: 0 0 4px 0; font-size: 0.9rem; color: var(--secondary-text-color); line-height: 1.4; }
 
-      /* HVAC SPECIFIC STYLES */
-      .hvac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
-      @container (max-width: 550px) { .hvac-grid { grid-template-columns: 1fr; } }
-      @media (max-width: 768px) { .hvac-grid { grid-template-columns: 1fr; } }
+      /* HVAC ULTRA-COMPACT MICRO-ROW STYLES */
+      .hvac-grid { display: flex; flex-direction: column; gap: 8px; }
       .hvac-unit-card {
         background: var(--secondary-background-color, rgba(128,128,128,0.12));
-        border-radius: 16px;
-        padding: 12px;
+        border-radius: 14px;
+        padding: 8px 12px;
         display: flex;
-        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
         gap: 8px;
         border: 1px solid var(--divider-color, rgba(255,255,255,0.08));
         transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        min-height: 54px;
       }
-      .hvac-unit-header { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-      .hvac-unit-title { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.95rem; }
-      .hvac-temp-row { display: flex; align-items: baseline; gap: 10px; cursor: pointer; padding: 2px 0; }
-      .hvac-big-temp { font-size: 2.2rem; font-weight: 800; line-height: 1; color: var(--primary-text-color); }
-      .hvac-target-group { display: flex; flex-direction: column; }
-      .target-label { font-size: 0.6rem; letter-spacing: 0.08em; color: var(--secondary-text-color); }
-      .target-val { font-size: 1rem; font-weight: 700; color: var(--primary-color); }
-      .hvac-telemetry-row { display: flex; gap: 6px; flex-wrap: wrap; }
-      .hvac-metric { display: flex; align-items: center; gap: 3px; background: rgba(0,0,0,0.25); padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; color: var(--primary-text-color); }
-      .hvac-metric.overshoot { background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.4); }
-      .filter-section { display: flex; flex-direction: column; gap: 3px; }
-      .filter-header { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--secondary-text-color); }
-      .filter-bar-track { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
-      .filter-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
-      .filter-bar-fill.ok { background: #4ade80; }
-      .filter-bar-fill.warning { background: #facc15; }
-      .filter-bar-fill.expired { background: #ef4444; }
-      .hvac-card-actions { display: flex; gap: 6px; margin-top: 2px; }
-      .hvac-btn { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: var(--primary-text-color); border-radius: 10px; padding: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: background 0.2s; }
-      .hvac-btn:hover { background: rgba(255,255,255,0.15); }
+      .hvac-compact-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+      .hvac-unit-icon { --mdc-icon-size: 20px; color: var(--primary-color); flex-shrink: 0; }
+      .hvac-compact-title-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .hvac-compact-name { font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--primary-text-color); }
+      .hvac-compact-meta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+      .hvac-mini-badge { font-size: 0.65rem; padding: 1px 5px; border-radius: 6px; background: rgba(0,0,0,0.3); color: var(--secondary-text-color); white-space: nowrap; }
+      .hvac-mini-badge.overshoot { background: rgba(251, 146, 60, 0.2); color: #fb923c; }
+
+      .hvac-compact-center { display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; padding: 0 4px; flex-shrink: 0; }
+      .hvac-compact-temp { font-size: 1.5rem; font-weight: 800; line-height: 1; color: var(--primary-text-color); }
+      .hvac-compact-subtemp { font-size: 0.65rem; color: var(--secondary-text-color); white-space: nowrap; margin-top: 1px; }
+
+      .hvac-compact-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+      .hvac-icon-btn {
+        width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.06); color: var(--primary-text-color);
+        display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;
+      }
+      .hvac-icon-btn:hover { background: rgba(255,255,255,0.16); }
+      .hvac-icon-btn ha-icon { --mdc-icon-size: 16px; }
+      .hvac-icon-btn.warning { border-color: rgba(250, 204, 21, 0.5); color: #facc15; }
+      .hvac-icon-btn.expired { border-color: rgba(239, 68, 68, 0.5); color: #ef4444; }
+
       .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 5px 8px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
       .hvac-mode-btn.active { background: var(--primary-color, #2196f3); color: white; }
       .global-preset-badge { display: flex; align-items: center; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
@@ -2516,6 +2488,7 @@ class PassableApplianceCard extends LitElement {
         .popup-overlay { align-items: flex-end; }
         .popup-content { width: 100%; max-width: none; border-radius: 24px 24px 0 0; transform: translateY(100%); padding-bottom: max(24px, env(safe-area-inset-bottom, 24px)); }
         .popup-content.visible { transform: translateY(0); }
+        .drag-handle { display: block; width: 36px; height: 5px; background-color: #888; border-radius: 3px; margin: -8px auto 16px auto; }
       }
     `;
   }
