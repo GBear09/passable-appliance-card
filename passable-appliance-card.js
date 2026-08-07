@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.7
+ * Version: 1.2.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
+ *  6. HVAC Systems (Dynamic Multi-System Local HomeKit Control + Collapsible Visual Editor + On-Demand Helper Overrides)
  */
 
-const CARD_VERSION = "1.1.7";
+const CARD_VERSION = "1.2.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1692,11 +1692,26 @@ class PassableApplianceCard extends LitElement {
   }
 
   // ==========================================
-  // 6. HVAC SYSTEMS (DUAL HEAT PUMPS & HELPERS)
+  // 6. HVAC SYSTEMS (DYNAMIC LOCAL HEAT PUMPS & HELPERS)
   // ==========================================
   _renderHVAC() {
     const c = this.config;
     const globalPresetObj = this._getEntity(c.global_setpoint_preset);
+
+    const systems = c.hvac_systems || [
+      {
+        key: "upstairs",
+        name: c.upstairs_name || "Upstairs & Attic",
+        icon: c.upstairs_icon || "mdi:home-floor-2",
+        climate: c.upstairs_climate_hk || c.upstairs_climate || "climate.upstairs_hk"
+      },
+      {
+        key: "downstairs",
+        name: c.downstairs_name || "Downstairs & Basement",
+        icon: c.downstairs_icon || "mdi:home-floor-1",
+        climate: c.downstairs_climate_hk || c.downstairs_climate || "climate.downstairs_hk"
+      }
+    ];
 
     return html`
       <ha-card>
@@ -1718,7 +1733,7 @@ class PassableApplianceCard extends LitElement {
                     : ""}
                 </div>
                 <div class="header-subtitle-row">
-                  <p class="subtitle">Dual Heat Pump Systems & Comfort Control</p>
+                  <p class="subtitle">${systems.length} Local HVAC System${systems.length > 1 ? "s" : ""} & Comfort Control</p>
                 </div>
               </div>
             `
@@ -1726,26 +1741,24 @@ class PassableApplianceCard extends LitElement {
 
         <div class="card-content">
           <div class="hvac-grid">
-            ${this._renderHvacUnitCard("upstairs", "Upstairs & Attic", "mdi:home-floor-2", c.upstairs_climate || "climate.upstairs", c.upstairs_climate_hk || "climate.upstairs_hk")}
-            ${this._renderHvacUnitCard("downstairs", "Downstairs & Basement", "mdi:home-floor-1", c.downstairs_climate || "climate.downstairs", c.downstairs_climate_hk || "climate.downstairs_hk")}
+            ${systems.map((sys) => this._renderHvacUnitCard(sys.key, sys.name, sys.icon, sys.climate, sys))}
           </div>
         </div>
 
-        ${this._renderHvacModal()}
+        ${this._renderHvacModal(systems)}
       </ha-card>
     `;
   }
 
-  _renderHvacUnitCard(unitKey, title, icon, defaultClimate, defaultHkClimate) {
+  _renderHvacUnitCard(unitKey, title, icon, defaultClimate, sysConfig = {}) {
     const c = this.config;
-    const climateId = c[`${unitKey}_climate`] || defaultClimate;
-    const hkClimateId = c[`${unitKey}_climate_hk`] || defaultHkClimate;
-    const presetId = c[`${unitKey}_setpoint_preset`] || "input_text.hvac_active_profile";
-    const overshootActiveId = c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
-    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
-    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
-    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.hvac_filter_life_remaining_${unitKey}`;
-    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.hvac_filter_life_${unitKey}`;
+    const climateId = sysConfig.climate || c[`${unitKey}_climate_hk`] || c[`${unitKey}_climate`] || defaultClimate;
+    const presetId = sysConfig.setpoint_preset || c[`${unitKey}_setpoint_preset`] || "input_text.hvac_active_profile";
+    const overshootActiveId = sysConfig.overshoot_active || c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
+    const coolOvershootId = sysConfig.cool_overshoot || c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
+    const heatOvershootId = sysConfig.heat_overshoot || c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
+    const filterHoursId = sysConfig.filter_hours || c[`${unitKey}_filter_hours`] || `sensor.hvac_filter_life_remaining_${unitKey}`;
+    const filterLifeId = sysConfig.filter_life || c[`${unitKey}_filter_life`] || `input_number.hvac_filter_life_${unitKey}`;
 
     const climate = this._getEntity(climateId);
     const preset = this._getEntity(presetId);
@@ -1960,21 +1973,22 @@ class PassableApplianceCard extends LitElement {
     `;
   }
 
-  _renderHvacModal() {
+  _renderHvacModal(systems = []) {
     if (!this._hvacModal) return html``;
 
     const { unitKey, type } = this._hvacModal;
     const c = this.config;
-    const unitTitle = unitKey === "downstairs" ? "Downstairs & Basement" : "Upstairs & Attic";
-    const climateId = c[`${unitKey}_climate`] || `climate.${unitKey}`;
-    const climateHkId = c[`${unitKey}_climate_hk`] || `climate.${unitKey}_hk`;
-    const overshootActiveId = c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
-    const coolOvershootId = c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
-    const heatOvershootId = c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
-    const coolThreshId = c[`${unitKey}_cool_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_cool";
-    const heatThreshId = c[`${unitKey}_heat_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_heat";
-    const filterHoursId = c[`${unitKey}_filter_hours`] || `sensor.hvac_filter_life_remaining_${unitKey}`;
-    const filterLifeId = c[`${unitKey}_filter_life`] || `input_number.hvac_filter_life_${unitKey}`;
+    const sysConfig = (systems || []).find((s) => s.key === unitKey) || {};
+    const unitTitle = sysConfig.name || (unitKey === "downstairs" ? "Downstairs & Basement" : "Upstairs & Attic");
+    const climateId = sysConfig.climate || c[`${unitKey}_climate_hk`] || c[`${unitKey}_climate`] || `climate.${unitKey}_hk`;
+    const climateHkId = climateId;
+    const overshootActiveId = sysConfig.overshoot_active || c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
+    const coolOvershootId = sysConfig.cool_overshoot || c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
+    const heatOvershootId = sysConfig.heat_overshoot || c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
+    const coolThreshId = sysConfig.cool_overshoot_thresh || c[`${unitKey}_cool_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_cool";
+    const heatThreshId = sysConfig.heat_overshoot_thresh || c[`${unitKey}_heat_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_heat";
+    const filterHoursId = sysConfig.filter_hours || c[`${unitKey}_filter_hours`] || `sensor.hvac_filter_life_remaining_${unitKey}`;
+    const filterLifeId = sysConfig.filter_life || c[`${unitKey}_filter_life`] || `input_number.hvac_filter_life_${unitKey}`;
 
     const climate = this._getEntity(climateId);
     const overshootActiveObj = this._getEntity(overshootActiveId);
@@ -2676,136 +2690,210 @@ class PassableApplianceCardEditor extends LitElement {
   }
 
   _renderHvacEditor() {
+    const c = this.config;
+    const systems = c.hvac_systems || [
+      {
+        key: "upstairs",
+        name: c.upstairs_name || "Upstairs & Attic",
+        icon: c.upstairs_icon || "mdi:home-floor-2",
+        climate: c.upstairs_climate_hk || c.upstairs_climate || "climate.upstairs_hk"
+      },
+      {
+        key: "downstairs",
+        name: c.downstairs_name || "Downstairs & Basement",
+        icon: c.downstairs_icon || "mdi:home-floor-1",
+        climate: c.downstairs_climate_hk || c.downstairs_climate || "climate.downstairs_hk"
+      }
+    ];
+
+    const systemCount = systems.length;
+
     return html`
       <div class="section-box">
-        <h3>Downstairs HVAC Entities</h3>
+        <h3>HVAC System Configuration</h3>
+        <p class="form-help" style="margin:2px 0 8px 0; font-size:0.75rem; color:var(--secondary-text-color);">
+          Configure local HomeKit climate systems & optional helper overrides.
+        </p>
 
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "climate" } }}
-          .value=${this.config.downstairs_climate || ""}
-          .configValue=${"downstairs_climate"}
-          .label=${"Downstairs Climate Entity (Ecobee)"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
+        <!-- Number of Systems Selector -->
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">Number of HVAC Systems</label>
+          <select
+            class="custom-select"
+            .value=${systemCount}
+            @change=${(e) => this._onHVACSystemCountChange(parseInt(e.target.value))}
+          >
+            <option value="1">1 System</option>
+            <option value="2">2 Systems</option>
+            <option value="3">3 Systems</option>
+            <option value="4">4 Systems</option>
+            <option value="5">5 Systems</option>
+            <option value="6">6 Systems</option>
+          </select>
+        </div>
 
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "climate" } }}
-          .value=${this.config.downstairs_climate_hk || ""}
-          .configValue=${"downstairs_climate_hk"}
-          .label=${"Downstairs HomeKit Climate Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["input_select", "select"] } }}
-          .value=${this.config.downstairs_setpoint_preset || ""}
-          .configValue=${"downstairs_setpoint_preset"}
-          .label=${"Downstairs Setpoint Preset Helper"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["input_number", "number"] } }}
-          .value=${this.config.downstairs_cool_overshoot || ""}
-          .configValue=${"downstairs_cool_overshoot"}
-          .label=${"Downstairs Cool Overshoot Helper"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["input_number", "number"] } }}
-          .value=${this.config.downstairs_heat_overshoot || ""}
-          .configValue=${"downstairs_heat_overshoot"}
-          .label=${"Downstairs Heat Overshoot Helper"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.downstairs_filter_hours || ""}
-          .configValue=${"downstairs_filter_hours"}
-          .label=${"Downstairs Filter Life Hours Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-      </div>
-
-      <div class="section-box" style="margin-top:12px;">
-        <h3>Upstairs HVAC Entities</h3>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "climate" } }}
-          .value=${this.config.upstairs_climate || ""}
-          .configValue=${"upstairs_climate"}
-          .label=${"Upstairs Climate Entity (Ecobee)"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "climate" } }}
-          .value=${this.config.upstairs_climate_hk || ""}
-          .configValue=${"upstairs_climate_hk"}
-          .label=${"Upstairs HomeKit Climate Entity"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
+        <!-- Global Preset Select Selector -->
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["input_select", "select"] } }}
-          .value=${this.config.upstairs_setpoint_preset || ""}
-          .configValue=${"upstairs_setpoint_preset"}
-          .label=${"Upstairs Setpoint Preset Helper"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["input_number", "number"] } }}
-          .value=${this.config.upstairs_cool_overshoot || ""}
-          .configValue=${"upstairs_cool_overshoot"}
-          .label=${"Upstairs Cool Overshoot Helper"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["input_number", "number"] } }}
-          .value=${this.config.upstairs_heat_overshoot || ""}
-          .configValue=${"upstairs_heat_overshoot"}
-          .label=${"Upstairs Heat Overshoot Helper"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.upstairs_filter_hours || ""}
-          .configValue=${"upstairs_filter_hours"}
-          .label=${"Upstairs Filter Life Hours Sensor"}
-          @value-changed=${this._onFieldChange}
-        ></ha-selector>
-      </div>
-
-      <div class="section-box" style="margin-top:12px;">
-        <h3>Global HVAC Helpers</h3>
-
-        <ha-selector
-          .hass=${this.hass}
-          .selector=${{ entity: { domain: ["input_select", "select"] } }}
-          .value=${this.config.global_setpoint_preset || ""}
+          .value=${c.global_setpoint_preset || "input_select.home_mode"}
           .configValue=${"global_setpoint_preset"}
-          .label=${"Global Setpoint Preset Helper"}
+          .label=${"Global Setpoint Preset Helper (e.g. input_select.home_mode)"}
           @value-changed=${this._onFieldChange}
         ></ha-selector>
+
+        <!-- Collapsible Visual System Editors -->
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+          ${systems.map((sys, index) => this._renderHVACSystemEditorPanel(sys, index))}
+        </div>
       </div>
     `;
+  }
+
+  _renderHVACSystemEditorPanel(sys, index) {
+    const overrideStateKey = `_override_helper_${sys.key}`;
+    const showOverride = this[overrideStateKey] || false;
+
+    return html`
+      <details class="system-editor-details" style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px 12px;">
+        <summary style="font-weight:600; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; justify-content:space-between; color:var(--primary-color);">
+          <span>System ${index + 1}: ${sys.name || sys.key}</span>
+          <span style="font-size:0.75rem; opacity:0.7;">Click to expand</span>
+        </summary>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+          <ha-textfield
+            label="System Name"
+            .value=${sys.name || ""}
+            @input=${(e) => this._updateHVACSystemConfig(index, "name", e.target.value)}
+          ></ha-textfield>
+
+          <ha-textfield
+            label="System Icon (e.g. mdi:home-floor-2)"
+            .value=${sys.icon || "mdi:hvac"}
+            @input=${(e) => this._updateHVACSystemConfig(index, "icon", e.target.value)}
+          ></ha-textfield>
+
+          <!-- Primary Local Climate Entity Picker (HomeKit) -->
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ entity: { domain: "climate" } }}
+            .value=${sys.climate || ""}
+            .label=${"Local Climate Entity (HomeKit)"}
+            @value-changed=${(e) => this._updateHVACSystemConfig(index, "climate", e.detail.value)}
+          ></ha-selector>
+
+          <!-- On-demand Manual Entity Override Toggle -->
+          <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.05); padding:8px 10px; border-radius:8px; margin-top:4px;">
+            <span style="font-size:0.8rem; font-weight:600;">Manual Entity Overrides</span>
+            <button
+              type="button"
+              style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:white; border-radius:6px; padding:4px 8px; font-size:0.75rem; cursor:pointer;"
+              @click=${() => { this[overrideStateKey] = !showOverride; this.requestUpdate(); }}
+            >
+              ${showOverride ? "Hide Selectors" : "➕ Add / Override Helpers"}
+            </button>
+          </div>
+
+          ${showOverride
+            ? html`
+                <div style="display:flex; flex-direction:column; gap:8px; padding-left:8px; border-left:2px solid var(--primary-color);">
+                  <p style="font-size:0.7rem; color:var(--secondary-text-color); margin:0;">
+                    Helpers auto-discover by default. Override specific helper entities below if needed.
+                  </p>
+
+                  <ha-selector
+                    .hass=${this.hass}
+                    .selector=${{ entity: { domain: "input_boolean" } }}
+                    .value=${sys.overshoot_active || ""}
+                    .label=${"Overshoot Active Boolean"}
+                    @value-changed=${(e) => this._updateHVACSystemConfig(index, "overshoot_active", e.detail.value)}
+                  ></ha-selector>
+
+                  <ha-selector
+                    .hass=${this.hass}
+                    .selector=${{ entity: { domain: ["input_number", "number"] } }}
+                    .value=${sys.cool_overshoot || ""}
+                    .label=${"Cool Overshoot Helper Number"}
+                    @value-changed=${(e) => this._updateHVACSystemConfig(index, "cool_overshoot", e.detail.value)}
+                  ></ha-selector>
+
+                  <ha-selector
+                    .hass=${this.hass}
+                    .selector=${{ entity: { domain: ["input_number", "number"] } }}
+                    .value=${sys.heat_overshoot || ""}
+                    .label=${"Heat Overshoot Helper Number"}
+                    @value-changed=${(e) => this._updateHVACSystemConfig(index, "heat_overshoot", e.detail.value)}
+                  ></ha-selector>
+
+                  <ha-selector
+                    .hass=${this.hass}
+                    .selector=${{ entity: { domain: ["sensor", "input_number"] } }}
+                    .value=${sys.filter_hours || ""}
+                    .label=${"Filter Life Remaining Sensor"}
+                    @value-changed=${(e) => this._updateHVACSystemConfig(index, "filter_hours", e.detail.value)}
+                  ></ha-selector>
+
+                  <ha-selector
+                    .hass=${this.hass}
+                    .selector=${{ entity: { domain: ["input_number", "number"] } }}
+                    .value=${sys.filter_life || ""}
+                    .label=${"Max Filter Life Helper Number"}
+                    @value-changed=${(e) => this._updateHVACSystemConfig(index, "filter_life", e.detail.value)}
+                  ></ha-selector>
+                </div>
+              `
+            : ""}
+        </div>
+      </details>
+    `;
+  }
+
+  _onHVACSystemCountChange(newCount) {
+    const c = this.config;
+    const currentSystems = c.hvac_systems || [
+      { key: "upstairs", name: c.upstairs_name || "Upstairs & Attic", icon: c.upstairs_icon || "mdi:home-floor-2", climate: c.upstairs_climate_hk || c.upstairs_climate || "climate.upstairs_hk" },
+      { key: "downstairs", name: c.downstairs_name || "Downstairs & Basement", icon: c.downstairs_icon || "mdi:home-floor-1", climate: c.downstairs_climate_hk || c.downstairs_climate || "climate.downstairs_hk" }
+    ];
+
+    const updatedSystems = [...currentSystems];
+    while (updatedSystems.length < newCount) {
+      const idx = updatedSystems.length + 1;
+      updatedSystems.push({
+        key: `system_${idx}`,
+        name: `HVAC System ${idx}`,
+        icon: "mdi:hvac",
+        climate: `climate.hvac_system_${idx}_hk`
+      });
+    }
+    while (updatedSystems.length > newCount) {
+      updatedSystems.pop();
+    }
+
+    this._updateConfig({ ...this.config, hvac_systems: updatedSystems });
+  }
+
+  _updateHVACSystemConfig(index, field, value) {
+    const c = this.config;
+    const currentSystems = c.hvac_systems || [
+      { key: "upstairs", name: c.upstairs_name || "Upstairs & Attic", icon: c.upstairs_icon || "mdi:home-floor-2", climate: c.upstairs_climate_hk || c.upstairs_climate || "climate.upstairs_hk" },
+      { key: "downstairs", name: c.downstairs_name || "Downstairs & Basement", icon: c.downstairs_icon || "mdi:home-floor-1", climate: c.downstairs_climate_hk || c.downstairs_climate || "climate.downstairs_hk" }
+    ];
+
+    const updatedSystems = currentSystems.map((s, i) => {
+      if (i === index) {
+        const updated = { ...s };
+        if (value === "" || value === undefined || value === null) {
+          delete updated[field];
+        } else {
+          updated[field] = value;
+        }
+        return updated;
+      }
+      return s;
+    });
+
+    this._updateConfig({ ...this.config, hvac_systems: updatedSystems });
   }
 
   _renderRefrigeratorEditor() {
