@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.5
+ * Version: 1.1.6
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.1.5";
+const CARD_VERSION = "1.1.6";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -425,24 +425,30 @@ class PassableApplianceCard extends LitElement {
     const popupContent = e.currentTarget;
     const currentY = e.touches[0].clientY;
     const deltaY = currentY - this._startY;
+
     if (deltaY > 0 && popupContent.scrollTop <= 0) {
       if (e.cancelable) e.preventDefault();
       this._currentY = currentY;
       popupContent.style.transform = `translateY(${deltaY}px)`;
+    } else if (this._currentY !== undefined && currentY <= this._startY) {
+      this._currentY = currentY;
+      popupContent.style.transform = `translateY(0px)`;
     }
   }
 
   _handleTouchEnd(e) {
     if (this._startY === undefined) return;
     const popupContent = e.currentTarget;
-    const deltaY = this._currentY - this._startY;
-    popupContent.style.transition = "";
-    if (deltaY > 80) {
+    const deltaY = (this._currentY !== undefined) ? (this._currentY - this._startY) : 0;
+    popupContent.style.transition = "transform 0.25s ease-out";
+
+    if (deltaY > 50) {
       this._closePopup();
     } else {
       popupContent.style.transform = "";
     }
     this._startY = undefined;
+    this._currentY = undefined;
   }
 
   _getPresetIcon(presetName) {
@@ -1984,7 +1990,13 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <div class="popup-overlay visible" @click=${() => this._closeHvacModal()}>
-        <div class="popup-content visible" @click=${(e) => e.stopPropagation()}>
+        <div
+          class="popup-content visible"
+          @click=${(e) => e.stopPropagation()}
+          @touchstart=${this._handleTouchStart}
+          @touchmove=${this._handleTouchMove}
+          @touchend=${this._handleTouchEnd}
+        >
           <div class="drag-handle"></div>
           <div class="popup-header">
             <button class="close-button" @click=${() => this._closeHvacModal()}>
@@ -2521,10 +2533,10 @@ class PassableApplianceCard extends LitElement {
       .status-chip.active-fan { background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); }
 
       @media (max-width: 768px) {
-        .popup-overlay { align-items: flex-end; }
-        .popup-content { width: 100%; max-width: none; border-radius: 24px 24px 0 0; transform: translateY(100%); padding-bottom: max(24px, env(safe-area-inset-bottom, 24px)); }
+        .popup-overlay { align-items: flex-end; overscroll-behavior: contain; touch-action: none; }
+        .popup-content { width: 100%; max-width: none; border-radius: 24px 24px 0 0; transform: translateY(100%); padding-bottom: max(24px, env(safe-area-inset-bottom, 24px)); overscroll-behavior: contain; }
         .popup-content.visible { transform: translateY(0); }
-        .drag-handle { display: block; width: 36px; height: 5px; background-color: #888; border-radius: 3px; margin: -8px auto 16px auto; }
+        .drag-handle { display: block; width: 36px; height: 5px; background-color: var(--secondary-text-color, #888); border-radius: 3px; margin: -4px auto 12px auto; flex-shrink: 0; position: sticky; top: -12px; z-index: 10; }
       }
     `;
   }
