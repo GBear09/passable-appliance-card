@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.1.1
+ * Version: 1.1.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Dual Heat Pump Systems + Overshoot Helpers + Filter Lifespan Monitors + Thermostat & Filter Modals)
  */
 
-const CARD_VERSION = "1.1.1";
+const CARD_VERSION = "1.1.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1930,22 +1930,23 @@ class PassableApplianceCard extends LitElement {
     const currentPreset = climate.attributes.preset_mode || "home";
 
     return html`
-      <div class="modal-overlay" @click=${() => this._closeHvacModal()}>
-        <div class="modal-content" @click=${(e) => e.stopPropagation()}>
-          <div class="modal-header">
-            <h2>${unitTitle} - ${type === "setpoints" ? "Setpoints & Presets" : "Filter Maintenance"}</h2>
-            <button class="close-btn" @click=${() => this._closeHvacModal()}>
+      <div class="popup-overlay visible" @click=${() => this._closeHvacModal()}>
+        <div class="popup-content visible" @click=${(e) => e.stopPropagation()}>
+          <div class="drag-handle"></div>
+          <div class="popup-header">
+            <button class="close-button" @click=${() => this._closeHvacModal()}>
               <ha-icon icon="mdi:close"></ha-icon>
             </button>
+            <h3>${unitTitle} - ${type === "setpoints" ? "Setpoints & Presets" : "Filter Maintenance"}</h3>
           </div>
 
-          <div class="modal-body">
+          <div style="display:flex; flex-direction:column; gap:12px;">
             ${type === "setpoints"
               ? html`
                   <!-- HVAC Mode -->
-                  <div class="control-row" style="margin-bottom:14px;">
+                  <div class="control-row">
                     <span class="control-label">HVAC Mode</span>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
                       ${["cool", "heat", "auto", "off"].map(
                         (m) => html`
                           <button
@@ -1960,9 +1961,9 @@ class PassableApplianceCard extends LitElement {
                   </div>
 
                   <!-- Preset Modes -->
-                  <div class="control-row" style="margin-bottom:14px;">
+                  <div class="control-row">
                     <span class="control-label">Preset Mode</span>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
                       ${presetModes.map(
                         (p) => html`
                           <button
@@ -1977,7 +1978,7 @@ class PassableApplianceCard extends LitElement {
                   </div>
 
                   <!-- Target Setpoint -->
-                  <div class="control-row" style="margin-bottom:16px;">
+                  <div class="control-row">
                     <span class="control-label">Target Setpoint</span>
                     <div class="step-controller-pill">
                       <button class="pill-btn" @click=${() => this._adjustHvacTemp(climateId, -0.5)}>-</button>
@@ -1987,14 +1988,14 @@ class PassableApplianceCard extends LitElement {
                   </div>
 
                   <div class="divider"></div>
-                  <h4 style="margin:8px 0 12px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
+                  <h4 style="margin:4px 0 8px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
                     <ha-icon icon="mdi:lightning-bolt"></ha-icon>
                     <span>Overshoot Buffer Controls</span>
                   </h4>
 
                   ${overshootActiveObj && overshootActiveObj.state !== "unavailable"
                     ? html`
-                        <div class="control-row" style="margin-bottom:12px;">
+                        <div class="control-row">
                           <div class="control-label-group">
                             <ha-icon icon="mdi:power-plug"></ha-icon>
                             <span class="control-label">Overshoot State</span>
@@ -2010,7 +2011,7 @@ class PassableApplianceCard extends LitElement {
 
                   ${coolOvershoot.state && coolOvershoot.state !== "unavailable"
                     ? html`
-                        <div class="control-row" style="margin-bottom:12px;">
+                        <div class="control-row">
                           <div class="control-label-group">
                             <ha-icon icon="mdi:snowflake"></ha-icon>
                             <span class="control-label">Cooling Overshoot Offset</span>
@@ -2026,7 +2027,7 @@ class PassableApplianceCard extends LitElement {
 
                   ${heatOvershoot.state && heatOvershoot.state !== "unavailable"
                     ? html`
-                        <div class="control-row" style="margin-bottom:12px;">
+                        <div class="control-row">
                           <div class="control-label-group">
                             <ha-icon icon="mdi:fire"></ha-icon>
                             <span class="control-label">Heating Overshoot Offset</span>
@@ -2042,7 +2043,7 @@ class PassableApplianceCard extends LitElement {
 
                   ${coolThresh.state && coolThresh.state !== "unavailable"
                     ? html`
-                        <div class="control-row" style="margin-bottom:12px;">
+                        <div class="control-row">
                           <div class="control-label-group">
                             <ha-icon icon="mdi:thermometer-alert"></ha-icon>
                             <span class="control-label">Cool Trigger Threshold</span>
@@ -2057,7 +2058,7 @@ class PassableApplianceCard extends LitElement {
                     : ""}
 
                   <div class="divider"></div>
-                  <button class="recirc-button" style="width:100%; margin-top:8px;" @click=${() => this._showMoreInfo(climateHkId || climateId)}>
+                  <button class="recirc-button" style="width:100%; margin-top:4px;" @click=${() => this._showMoreInfo(climateHkId || climateId)}>
                     <ha-icon icon="mdi:homekit"></ha-icon>
                     <span>OPEN HOMEKIT / ECOBEE CONTROL</span>
                   </button>
@@ -2093,7 +2094,7 @@ class PassableApplianceCard extends LitElement {
                     </div>
                   </div>
 
-                  <button class="recirc-button active" style="width:100%; margin-top:20px;" @click=${() => this._resetHvacFilter(filterHoursId, filterLifeId)}>
+                  <button class="recirc-button active" style="width:100%; margin-top:16px;" @click=${() => this._resetHvacFilter(filterHoursId, filterLifeId)}>
                     <ha-icon icon="mdi:refresh"></ha-icon>
                     <span>RESET FILTER LIFE COUNTER</span>
                   </button>
@@ -2199,7 +2200,8 @@ class PassableApplianceCard extends LitElement {
       .unit-power-off .power-btn-header { pointer-events: auto; }
       .unit-power-off .spinner { animation: none !important; }
 
-      .card-content { padding: 0 16px 16px; }
+      .card-content { padding: 16px; container-type: inline-size; }
+      .header + .card-content, .header ~ .card-content { padding-top: 0; }
 
       /* REFRIGERATOR GRAPHICS */
       .fridge-body { display: flex; height: 320px; }
@@ -2405,7 +2407,8 @@ class PassableApplianceCard extends LitElement {
       .step-content p { margin: 0 0 4px 0; font-size: 0.9rem; color: var(--secondary-text-color); line-height: 1.4; }
 
       /* HVAC SPECIFIC STYLES */
-      .hvac-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .hvac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+      @container (max-width: 550px) { .hvac-grid { grid-template-columns: 1fr; } }
       @media (max-width: 768px) { .hvac-grid { grid-template-columns: 1fr; } }
       .hvac-unit-card { background: var(--secondary-background-color, rgba(128,128,128,0.12)); border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--divider-color, rgba(255,255,255,0.08)); }
       .hvac-unit-header { display: flex; justify-content: space-between; align-items: center; }
