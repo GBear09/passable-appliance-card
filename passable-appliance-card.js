@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.2.0
+ * Version: 1.3.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Dynamic Multi-System Local HomeKit Control + Collapsible Visual Editor + On-Demand Helper Overrides)
+ *  6. HVAC Systems (Dynamic Multi-System Local HomeKit Control + Thermostat Mode Status Chips + Spinning Airflow Fan Animations + Expired Filter Alerts + High-Contrast Color Schemes)
  */
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.3.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1783,33 +1783,52 @@ class PassableApplianceCard extends LitElement {
     let stateLabel = "IDLE";
     let stateIcon = "mdi:hvac-off";
     let dynamicCardStyle = "";
+    let isAnimated = false;
+
+    const mode = (climate.state || climate.attributes.hvac_mode || "").toLowerCase();
 
     if (hvacAction === "cooling") {
       stateClass = "active-cool";
       stateLabel = "COOLING";
       stateIcon = "mdi:snowflake";
-      dynamicCardStyle = "background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(30, 41, 59, 0.65)); border: 1px solid rgba(56, 189, 248, 0.35); box-shadow: 0 4px 14px rgba(14, 165, 233, 0.15);";
+      isAnimated = true;
+      dynamicCardStyle = "background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(30, 41, 59, 0.7)); border: 1px solid rgba(56, 189, 248, 0.45); box-shadow: 0 4px 16px rgba(14, 165, 233, 0.2);";
     } else if (hvacAction === "heating") {
       stateClass = "active-heat";
       stateLabel = "HEATING";
       stateIcon = "mdi:fire";
-      dynamicCardStyle = "background: linear-gradient(135deg, rgba(249, 115, 22, 0.16), rgba(30, 41, 59, 0.65)); border: 1px solid rgba(249, 115, 22, 0.35); box-shadow: 0 4px 14px rgba(249, 115, 22, 0.15);";
+      isAnimated = true;
+      dynamicCardStyle = "background: linear-gradient(135deg, rgba(249, 115, 22, 0.18), rgba(30, 41, 59, 0.7)); border: 1px solid rgba(249, 115, 22, 0.45); box-shadow: 0 4px 16px rgba(249, 115, 22, 0.2);";
     } else if (hvacAction === "fan") {
       stateClass = "active-fan";
       stateLabel = "FAN ONLY";
       stateIcon = "mdi:fan";
-      dynamicCardStyle = "background: linear-gradient(135deg, rgba(74, 222, 128, 0.14), rgba(30, 41, 59, 0.65)); border: 1px solid rgba(74, 222, 128, 0.3);";
-    } else if (climate.state === "off") {
+      isAnimated = true;
+      dynamicCardStyle = "background: linear-gradient(135deg, rgba(74, 222, 128, 0.16), rgba(30, 41, 59, 0.7)); border: 1px solid rgba(74, 222, 128, 0.4);";
+    } else if (mode === "cool") {
+      stateClass = "idle-cool";
+      stateLabel = "COOL (IDLE)";
+      stateIcon = "mdi:snowflake";
+    } else if (mode === "heat") {
+      stateClass = "idle-heat";
+      stateLabel = "HEAT (IDLE)";
+      stateIcon = "mdi:fire";
+    } else if (mode === "auto" || mode === "heat_cool") {
+      stateClass = "idle-auto";
+      stateLabel = "AUTO (IDLE)";
+      stateIcon = "mdi:theme-light-dark";
+    } else if (mode === "off") {
       stateClass = "power-off";
       stateLabel = "OFF";
       stateIcon = "mdi:power";
     }
 
-    // Filter calculations
+    // Filter calculations & alert
     const remHours = parseFloat(filterHours.state);
     const maxHours = parseFloat(filterLife.state) || 300;
     const filterPct = !isNaN(remHours) && maxHours > 0 ? Math.max(0, Math.min(100, Math.round((remHours / maxHours) * 100))) : 0;
     const filterClass = filterPct < 15 ? "expired" : filterPct < 35 ? "warning" : "ok";
+    const isFilterExpired = filterClass === "expired" || remHours <= 0;
 
     // Overshoot display calculation
     const isOvershootActive = overshootActiveObj.state === "on" || (overshootActiveObj.state !== "off" && (hvacAction === "cooling" || hvacAction === "heating"));
@@ -1838,6 +1857,9 @@ class PassableApplianceCard extends LitElement {
             <span class="hvac-compact-name">${title}</span>
             <div class="hvac-compact-meta">
               <span class="status-chip ${stateClass}">
+                ${isAnimated
+                  ? html`<ha-icon icon="mdi:fan" class="hvac-spin-icon" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>`
+                  : ""}
                 <ha-icon icon="${stateIcon}" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>
                 ${stateLabel}
               </span>
@@ -1858,6 +1880,18 @@ class PassableApplianceCard extends LitElement {
                   `
                 : ""}
               ${activeOvershoot ? html`<span class="hvac-mini-badge overshoot">⚡ ${activeOvershoot}</span>` : ""}
+              ${isFilterExpired
+                ? html`
+                    <span
+                      class="hvac-mini-badge alert-filter"
+                      @click=${(e) => { e.stopPropagation(); this._showHvacModal(unitKey, "filter"); }}
+                      style="cursor:pointer;"
+                      title="Air filter life expired! Tap to view maintenance steps."
+                    >
+                      ⚠️ Replace Filter
+                    </span>
+                  `
+                : ""}
             </div>
           </div>
         </div>
@@ -1873,8 +1907,9 @@ class PassableApplianceCard extends LitElement {
           <button class="hvac-icon-btn" title="Setpoints & Presets" @click=${() => this._showHvacModal(unitKey, "setpoints")}>
             <ha-icon icon="mdi:tune"></ha-icon>
           </button>
-          <button class="hvac-icon-btn ${filterClass}" title="Filter Life: ${!isNaN(remHours) ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}" @click=${() => this._showHvacModal(unitKey, "filter")}>
+          <button class="hvac-icon-btn ${filterClass}" style="position:relative;" title="Filter Life: ${!isNaN(remHours) ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}" @click=${() => this._showHvacModal(unitKey, "filter")}>
             <ha-icon icon="mdi:air-filter"></ha-icon>
+            ${isFilterExpired ? html`<span class="filter-alert-dot"></span>` : ""}
           </button>
         </div>
       </div>
@@ -2537,14 +2572,54 @@ class PassableApplianceCard extends LitElement {
       .hvac-icon-btn:hover { background: rgba(255,255,255,0.16); }
       .hvac-icon-btn ha-icon { --mdc-icon-size: 16px; }
       .hvac-icon-btn.warning { border-color: rgba(250, 204, 21, 0.5); color: #facc15; }
-      .hvac-icon-btn.expired { border-color: rgba(239, 68, 68, 0.5); color: #ef4444; }
+      .hvac-icon-btn.expired { border-color: rgba(239, 68, 68, 0.6); color: #ef4444; }
+
+      @keyframes spin-slow {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .hvac-spin-icon {
+        animation: spin-slow 2s linear infinite;
+        display: inline-block;
+      }
+
+      @keyframes alert-pulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+      }
+      .filter-alert-dot {
+        position: absolute;
+        top: -3px;
+        right: -3px;
+        width: 8px;
+        height: 8px;
+        background-color: #ef4444;
+        border-radius: 50%;
+        border: 1px solid rgba(0,0,0,0.6);
+        animation: alert-pulse 1.8s infinite;
+      }
+      .hvac-mini-badge.alert-filter {
+        background: rgba(239, 68, 68, 0.25);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.6);
+        font-weight: 700;
+        animation: alert-pulse 2s infinite;
+      }
 
       .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 5px 8px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
       .hvac-mode-btn.active { background: var(--primary-color, #2196f3); color: white; }
       .global-preset-badge { display: flex; align-items: center; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
-      .status-chip.active-cool { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
-      .status-chip.active-heat { background: rgba(249, 115, 22, 0.2); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.4); }
-      .status-chip.active-fan { background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); }
+      
+      /* HIGH CONTRAST STATUS CHIPS */
+      .status-chip { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; }
+      .status-chip.active-cool { background: rgba(14, 165, 233, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.5); text-shadow: 0 0 8px rgba(14, 165, 233, 0.4); }
+      .status-chip.idle-cool { background: rgba(14, 165, 233, 0.12); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.3); }
+      .status-chip.active-heat { background: rgba(249, 115, 22, 0.25); color: #ff9800; border: 1px solid rgba(249, 115, 22, 0.5); text-shadow: 0 0 8px rgba(249, 115, 22, 0.4); }
+      .status-chip.idle-heat { background: rgba(249, 115, 22, 0.12); color: #ffbd7a; border: 1px solid rgba(249, 115, 22, 0.3); }
+      .status-chip.active-fan { background: rgba(74, 222, 128, 0.25); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.5); }
+      .status-chip.idle-auto { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+      .status-chip.power-off { background: rgba(255, 255, 255, 0.08); color: var(--secondary-text-color, #a1a1aa); border: 1px solid rgba(255, 255, 255, 0.15); }
 
       @media (max-width: 768px) {
         .popup-overlay { align-items: flex-end; overscroll-behavior: contain; touch-action: none; }
