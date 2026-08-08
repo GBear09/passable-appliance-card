@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.3.5
+ * Version: 1.3.6
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Side-by-Side Meta Chips Layout + Zero Overlap with Temperature Display + Filter Hours Steppers + High Contrast Buttons)
+ *  6. HVAC Systems (Larger 1.85rem Temperature Display + Auto-Synced Filter Life Hours + Read-Only Remaining Lifespan Display)
  */
 
-const CARD_VERSION = "1.3.5";
+const CARD_VERSION = "1.3.6";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1691,6 +1691,18 @@ class PassableApplianceCard extends LitElement {
     });
   }
 
+  _adjustFilterLifeAndHours(filterHoursId, filterLifeId, delta) {
+    this._fireHaptic("light");
+    const filterLife = this._getEntity(filterLifeId);
+    let val = parseFloat(filterLife.state) || 300;
+    val = Math.max(50, val + delta);
+    this._setNumberEntity(filterLifeId, val);
+    
+    if (filterHoursId) {
+      this._setNumberEntity(filterHoursId, val);
+    }
+  }
+
   // ==========================================
   // 6. HVAC SYSTEMS (DYNAMIC LOCAL HEAT PUMPS & HELPERS)
   // ==========================================
@@ -2196,16 +2208,12 @@ class PassableApplianceCard extends LitElement {
                   <div class="materials-section">
                     <h3><ha-icon icon="mdi:air-filter"></ha-icon> Air Filter Lifespan & Settings</h3>
                     
-                    <div class="control-row" style="margin-bottom:10px;">
+                    <div class="control-row" style="margin-bottom:12px;">
                       <div class="control-label-group">
                         <ha-icon icon="mdi:timer-outline"></ha-icon>
                         <span class="control-label">Filter Life Remaining</span>
                       </div>
-                      <div class="step-controller-pill">
-                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterHoursId, -10)}>-10h</button>
-                        <span class="pill-value">${filterHours.state || 0} hrs</span>
-                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterHoursId, 10)}>+10h</button>
-                      </div>
+                      <span class="control-value" style="font-weight:700; color:var(--primary-color);">${filterHours.state || 0} hrs</span>
                     </div>
 
                     <div class="control-row">
@@ -2214,9 +2222,9 @@ class PassableApplianceCard extends LitElement {
                         <span class="control-label">Max Recommended Lifespan</span>
                       </div>
                       <div class="step-controller-pill">
-                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterLifeId, -25)}>-25h</button>
+                        <button class="pill-btn" @click=${() => this._adjustFilterLifeAndHours(filterHoursId, filterLifeId, -25)}>-25h</button>
                         <span class="pill-value">${filterLife.state || 300} hrs</span>
-                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterLifeId, 25)}>+25h</button>
+                        <button class="pill-btn" @click=${() => this._adjustFilterLifeAndHours(filterHoursId, filterLifeId, 25)}>+25h</button>
                       </div>
                     </div>
                   </div>
@@ -2580,7 +2588,7 @@ class PassableApplianceCard extends LitElement {
       .hvac-mini-badge.overshoot { background: rgba(251, 146, 60, 0.2); color: #fb923c; }
 
       .hvac-compact-center { display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; padding: 0 4px; flex-shrink: 0; }
-      .hvac-compact-temp { font-size: 1.5rem; font-weight: 800; line-height: 1; color: var(--primary-text-color); }
+      .hvac-compact-temp { font-size: 1.85rem; font-weight: 800; line-height: 0.9; color: var(--primary-text-color); letter-spacing: -0.03em; }
       .hvac-compact-subtemp { font-size: 0.65rem; color: var(--secondary-text-color); white-space: nowrap; margin-top: 1px; }
 
       .hvac-compact-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
