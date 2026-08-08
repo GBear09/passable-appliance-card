@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.3.0
+ * Version: 1.3.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Dynamic Multi-System Local HomeKit Control + Thermostat Mode Status Chips + Spinning Airflow Fan Animations + Expired Filter Alerts + High-Contrast Color Schemes)
+ *  6. HVAC Systems (Inline Title Preset Badges + Inline Setpoint Overshoot Offset + High-Contrast Active Mode Buttons + Consolidated Layout)
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.3.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1832,14 +1832,14 @@ class PassableApplianceCard extends LitElement {
 
     // Overshoot display calculation
     const isOvershootActive = overshootActiveObj.state === "on" || (overshootActiveObj.state !== "off" && (hvacAction === "cooling" || hvacAction === "heating"));
-    let activeOvershoot = null;
+    let activeOvershootOffset = null;
     if (isOvershootActive) {
       if (hvacAction === "cooling" && coolOvershoot.state && coolOvershoot.state !== "unavailable" && coolOvershoot.state !== "unknown") {
-        activeOvershoot = `Cool +${coolOvershoot.state}°F`;
+        activeOvershootOffset = `+${coolOvershoot.state}°⚡`;
       } else if (hvacAction === "heating" && heatOvershoot.state && heatOvershoot.state !== "unavailable" && heatOvershoot.state !== "unknown") {
-        activeOvershoot = `Heat -${heatOvershoot.state}°F`;
+        activeOvershootOffset = `-${heatOvershoot.state}°⚡`;
       } else if (overshootActiveObj.state === "on") {
-        activeOvershoot = `Overshoot Active`;
+        activeOvershootOffset = `⚡`;
       }
     }
 
@@ -1850,19 +1850,12 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <div class="hvac-unit-card ${stateClass}" style="${dynamicCardStyle}">
-        <!-- Left Section: Icon + Title + Status Badges -->
+        <!-- Left Section: Icon + Title Line with Inline Preset Badge + Status Chip -->
         <div class="hvac-compact-left">
           <ha-icon icon="${icon}" class="hvac-unit-icon"></ha-icon>
           <div class="hvac-compact-title-group">
-            <span class="hvac-compact-name">${title}</span>
-            <div class="hvac-compact-meta">
-              <span class="status-chip ${stateClass}">
-                ${isAnimated
-                  ? html`<ha-icon icon="mdi:fan" class="hvac-spin-icon" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>`
-                  : ""}
-                <ha-icon icon="${stateIcon}" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>
-                ${stateLabel}
-              </span>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span class="hvac-compact-name">${title}</span>
               ${activePresetName
                 ? html`
                     <span
@@ -1879,7 +1872,16 @@ class PassableApplianceCard extends LitElement {
                     </span>
                   `
                 : ""}
-              ${activeOvershoot ? html`<span class="hvac-mini-badge overshoot">⚡ ${activeOvershoot}</span>` : ""}
+            </div>
+
+            <div class="hvac-compact-meta">
+              <span class="status-chip ${stateClass}">
+                ${isAnimated
+                  ? html`<ha-icon icon="mdi:fan" class="hvac-spin-icon" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>`
+                  : ""}
+                <ha-icon icon="${stateIcon}" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>
+                ${stateLabel}
+              </span>
               ${isFilterExpired
                 ? html`
                     <span
@@ -1896,10 +1898,12 @@ class PassableApplianceCard extends LitElement {
           </div>
         </div>
 
-        <!-- Center Section: Current Temp + Target Setpoint + Humidity -->
+        <!-- Center Section: Current Temp + Target Setpoint (with inline Overshoot offset) + Humidity -->
         <div class="hvac-compact-center" @click=${() => this._showMoreInfo(climateId)}>
           <div class="hvac-compact-temp">${currentTemp}°</div>
-          <div class="hvac-compact-subtemp">Set ${targetTemp}° • ${humidity}% RH</div>
+          <div class="hvac-compact-subtemp">
+            Set ${targetTemp}°${activeOvershootOffset ? ` (${activeOvershootOffset})` : ""} • ${humidity}% RH
+          </div>
         </div>
 
         <!-- Right Section: Compact Action Buttons -->
@@ -2188,11 +2192,6 @@ class PassableApplianceCard extends LitElement {
                       `
                     : ""}
 
-                  <div class="divider"></div>
-                  <button class="recirc-button" style="width:100%; margin-top:4px;" @click=${() => this._showMoreInfo(climateHkId || climateId)}>
-                    <ha-icon icon="mdi:homekit"></ha-icon>
-                    <span>OPEN HOMEKIT / ECOBEE CONTROL</span>
-                  </button>
                 `
               : html`
                   <div class="materials-section">
@@ -2607,8 +2606,8 @@ class PassableApplianceCard extends LitElement {
         animation: alert-pulse 2s infinite;
       }
 
-      .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 5px 8px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
-      .hvac-mode-btn.active { background: var(--primary-color, #2196f3); color: white; }
+      .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 5px 10px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
+      .hvac-mode-btn.active { background: var(--primary-color, #86efac); color: #052e16 !important; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
       .global-preset-badge { display: flex; align-items: center; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
       
       /* HIGH CONTRAST STATUS CHIPS */
