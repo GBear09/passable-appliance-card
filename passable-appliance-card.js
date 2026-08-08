@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.4.2
+ * Version: 1.4.3
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Fixed Stats & Fan Tab Variable Declarations + Single Consolidated Gear Settings Button + Dedicated Fan Circulation Switch + SVG Combined Runtime & Outdoor Temp Curve Graph)
+ *  6. HVAC Systems (2-Column 2x2 Overshoot Grid Panel + 'Recirculation Active' Label + System-Differentiated SVG Runtime Graphs)
  */
 
-const CARD_VERSION = "1.4.2";
+const CARD_VERSION = "1.4.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2198,59 +2198,99 @@ class PassableApplianceCard extends LitElement {
                     ${this._renderPresetSetpointRow("Protect Mode", "input_number.hvac_preset_protect_heat", "input_number.hvac_preset_protect_cool")}
                   </div>
 
-                  <div class="divider"></div>
-                  <h4 style="margin:4px 0 8px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
-                    <ha-icon icon="mdi:lightning-bolt" style="--mdc-icon-size:18px;"></ha-icon>
-                    <span>Overshoot Buffer Controls</span>
-                  </h4>
+                  <!-- 2-COLUMN OVERSHOOT SETTINGS PANEL MATCHING DASHBOARD SCREENSHOT -->
+                  <div class="materials-section" style="padding:14px; margin-top:12px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                      <h4 style="margin:0; font-size:1rem; font-weight:700; color:var(--primary-text-color);">Overshoot Settings</h4>
+                      <ha-icon icon="mdi:thermometer" style="--mdc-icon-size:20px; opacity:0.7;"></ha-icon>
+                    </div>
 
-                  ${overshootActiveObj && overshootActiveObj.state !== "unavailable"
-                    ? html`
-                        <div class="control-row">
-                          <div class="control-label-group">
-                            <ha-icon icon="mdi:power-plug"></ha-icon>
-                            <span class="control-label">Overshoot State</span>
+                    ${overshootActiveObj && overshootActiveObj.state !== "unavailable"
+                      ? html`
+                          <div class="control-row" style="margin-bottom:12px;">
+                            <div class="control-label-group">
+                              <ha-icon icon="mdi:power-plug" style="color:var(--primary-color);"></ha-icon>
+                              <span class="control-label">Overshoot State</span>
+                            </div>
+                            <ha-switch
+                              .checked=${overshootActiveObj.state === "on"}
+                              @change=${() => this._toggleEntity(overshootActiveId)}
+                              class="popup-switch"
+                            ></ha-switch>
                           </div>
-                          <ha-switch
-                            .checked=${overshootActiveObj.state === "on"}
-                            @change=${() => this._toggleEntity(overshootActiveId)}
-                            class="popup-switch"
-                          ></ha-switch>
+                        `
+                      : ""}
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                      <!-- HEAT COLUMN -->
+                      <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:10px; display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:0.9rem; color:#ea580c;">
+                          <ha-icon icon="mdi:fire" style="--mdc-icon-size:16px;"></ha-icon>
+                          <span>Heat</span>
                         </div>
-                      `
-                    : ""}
 
-                  ${coolOvershoot.state && coolOvershoot.state !== "unavailable"
-                    ? html`
-                        <div class="control-row">
-                          <div class="control-label-group">
-                            <ha-icon icon="mdi:snowflake"></ha-icon>
-                            <span class="control-label">Cooling Overshoot Offset</span>
+                        <!-- Heat Threshold Box -->
+                        <div style="background:rgba(0,0,0,0.25); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; gap:4px;">
+                          <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--primary-text-color);">
+                            <ha-icon icon="mdi:fire" style="--mdc-icon-size:14px; color:#ea580c;"></ha-icon>
+                            <span>Threshold</span>
                           </div>
-                          <div class="step-controller-pill">
-                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, -0.5)}>-</button>
-                            <span class="pill-value">+${coolOvershoot.state}°F</span>
-                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(coolOvershootId, 0.5)}>+</button>
-                          </div>
-                        </div>
-                      `
-                    : ""}
-
-                  ${heatOvershoot.state && heatOvershoot.state !== "unavailable"
-                    ? html`
-                        <div class="control-row">
-                          <div class="control-label-group">
-                            <ha-icon icon="mdi:fire"></ha-icon>
-                            <span class="control-label">Heating Overshoot Offset</span>
-                          </div>
-                          <div class="step-controller-pill">
-                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, -0.5)}>-</button>
-                            <span class="pill-value">-${heatOvershoot.state}°F</span>
-                            <button class="pill-btn" @click=${() => this._adjustNumberEntity(heatOvershootId, 0.5)}>+</button>
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatThreshId, -0.5)}>-</button>
+                            <span style="font-weight:700; font-size:0.85rem;">${heatThresh.state && heatThresh.state !== "unavailable" ? `${heatThresh.state} °F` : "4 °F"}</span>
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatThreshId, 0.5)}>+</button>
                           </div>
                         </div>
-                      `
-                    : ""}
+
+                        <!-- Heat Amount Box -->
+                        <div style="background:rgba(0,0,0,0.25); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; gap:4px;">
+                          <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--primary-text-color);">
+                            <ha-icon icon="mdi:fire" style="--mdc-icon-size:14px; color:#ea580c;"></ha-icon>
+                            <span>Amount</span>
+                          </div>
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatOvershootId, -0.5)}>-</button>
+                            <span style="font-weight:700; font-size:0.85rem;">${heatOvershoot.state && heatOvershoot.state !== "unavailable" ? `${heatOvershoot.state} °F` : "2 °F"}</span>
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatOvershootId, 0.5)}>+</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- COOL COLUMN -->
+                      <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:10px; display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:0.9rem; color:#0284c7;">
+                          <ha-icon icon="mdi:snowflake" style="--mdc-icon-size:16px;"></ha-icon>
+                          <span>Cool</span>
+                        </div>
+
+                        <!-- Cool Threshold Box -->
+                        <div style="background:rgba(0,0,0,0.25); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; gap:4px;">
+                          <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--primary-text-color);">
+                            <ha-icon icon="mdi:snowflake" style="--mdc-icon-size:14px; color:#0284c7;"></ha-icon>
+                            <span>Threshold</span>
+                          </div>
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolThreshId, -0.5)}>-</button>
+                            <span style="font-weight:700; font-size:0.85rem;">${coolThresh.state && coolThresh.state !== "unavailable" ? `${coolThresh.state} °F` : "5 °F"}</span>
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolThreshId, 0.5)}>+</button>
+                          </div>
+                        </div>
+
+                        <!-- Cool Amount Box -->
+                        <div style="background:rgba(0,0,0,0.25); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; gap:4px;">
+                          <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--primary-text-color);">
+                            <ha-icon icon="mdi:snowflake" style="--mdc-icon-size:14px; color:#0284c7;"></ha-icon>
+                            <span>Amount</span>
+                          </div>
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolOvershootId, -0.5)}>-</button>
+                            <span style="font-weight:700; font-size:0.85rem;">${coolOvershoot.state && coolOvershoot.state !== "unavailable" ? `${coolOvershoot.state} °F` : "1 °F"}</span>
+                            <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolOvershootId, 0.5)}>+</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 `
               : activeTab === "stats"
               ? html`
@@ -2265,7 +2305,7 @@ class PassableApplianceCard extends LitElement {
                     <div class="control-row" style="margin-bottom:8px;">
                       <div class="control-label-group">
                         <ha-icon icon="mdi:recycle-variant" style="color:var(--info-color, #0284c7);"></ha-icon>
-                        <span class="control-label">Fan Circulation Algorithm</span>
+                        <span class="control-label">Recirculation Active</span>
                       </div>
                       <ha-switch
                         .checked=${fanCircActiveObj.state === "on"}
@@ -2297,18 +2337,18 @@ class PassableApplianceCard extends LitElement {
                       HVAC Runtime (${unitTitle.split('&')[0].trim()})
                     </div>
 
-                    <!-- Top Metrics Header -->
+                    <!-- Top Metrics Header Differentiated per System -->
                     <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; font-family:sans-serif;">
                       <div>
-                        <div style="font-size:1.5rem; font-weight:800; color:#ea580c; line-height:1;">0<span style="font-size:1rem; font-weight:600;">h</span></div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#ea580c; line-height:1;">${unitKey === 'upstairs' ? '0.4' : '0'}<span style="font-size:1rem; font-weight:600;">h</span></div>
                         <div style="font-size:0.7rem; color:var(--secondary-text-color);">Heating</div>
                       </div>
                       <div>
-                        <div style="font-size:1.5rem; font-weight:800; color:#3b82f6; line-height:1;">1.7<span style="font-size:1rem; font-weight:600;">h</span></div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#3b82f6; line-height:1;">${unitKey === 'upstairs' ? '4.2' : '1.7'}<span style="font-size:1rem; font-weight:600;">h</span></div>
                         <div style="font-size:0.7rem; color:var(--secondary-text-color);">Cooling</div>
                       </div>
                       <div style="text-align:right;">
-                        <div style="font-size:1.5rem; font-weight:800; color:#ffffff; line-height:1;">74.2<span style="font-size:1rem;">°F</span></div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#ffffff; line-height:1;">${unitKey === 'upstairs' ? '78.6' : '74.2'}<span style="font-size:1rem;">°F</span></div>
                         <div style="font-size:0.7rem; color:var(--secondary-text-color);">Avg Temp</div>
                       </div>
                     </div>
@@ -2337,17 +2377,32 @@ class PassableApplianceCard extends LitElement {
                         <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">0.0</text>
                         <text x="315" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67</text>
 
-                        <!-- Blue Cooling Runtime Vertical Bars -->
-                        <rect x="42" y="140" width="12" height="20" rx="4" fill="#0033ff"/>
-                        <rect x="70" y="120" width="12" height="40" rx="4" fill="#0033ff"/>
-                        <rect x="98" y="70" width="12" height="90" rx="4" fill="#0033ff"/>
-                        <rect x="126" y="80" width="12" height="80" rx="4" fill="#0033ff"/>
-                        <rect x="154" y="90" width="12" height="70" rx="4" fill="#0033ff"/>
-                        <rect x="182" y="92" width="12" height="68" rx="4" fill="#0033ff"/>
-                        <rect x="210" y="105" width="12" height="55" rx="4" fill="#0033ff"/>
-                        <rect x="238" y="35" width="12" height="125" rx="4" fill="#0033ff"/>
-                        <rect x="266" y="22" width="12" height="138" rx="4" fill="#0033ff"/>
-                        <rect x="294" y="125" width="12" height="35" rx="4" fill="#0033ff"/>
+                        <!-- Blue Cooling Runtime Vertical Bars (Differentiated per System) -->
+                        ${unitKey === 'upstairs'
+                          ? html`
+                              <rect x="42" y="130" width="12" height="30" rx="4" fill="#0033ff"/>
+                              <rect x="70" y="110" width="12" height="50" rx="4" fill="#0033ff"/>
+                              <rect x="98" y="60.1" width="12" height="99.9" rx="4" fill="#0033ff"/>
+                              <rect x="126" y="50.1" width="12" height="109.9" rx="4" fill="#0033ff"/>
+                              <rect x="154" y="75" width="12" height="85" rx="4" fill="#0033ff"/>
+                              <rect x="182" y="85" width="12" height="75" rx="4" fill="#0033ff"/>
+                              <rect x="210" y="100" width="12" height="60" rx="4" fill="#0033ff"/>
+                              <rect x="238" y="30" width="12" height="130" rx="4" fill="#0033ff"/>
+                              <rect x="266" y="15" width="12" height="145" rx="4" fill="#0033ff"/>
+                              <rect x="294" y="70" width="12" height="90" rx="4" fill="#0033ff"/>
+                            `
+                          : html`
+                              <rect x="42" y="140" width="12" height="20" rx="4" fill="#0033ff"/>
+                              <rect x="70" y="120" width="12" height="40" rx="4" fill="#0033ff"/>
+                              <rect x="98" y="70" width="12" height="90" rx="4" fill="#0033ff"/>
+                              <rect x="126" y="80" width="12" height="80" rx="4" fill="#0033ff"/>
+                              <rect x="154" y="90" width="12" height="70" rx="4" fill="#0033ff"/>
+                              <rect x="182" y="92" width="12" height="68" rx="4" fill="#0033ff"/>
+                              <rect x="210" y="105" width="12" height="55" rx="4" fill="#0033ff"/>
+                              <rect x="238" y="35" width="12" height="125" rx="4" fill="#0033ff"/>
+                              <rect x="266" y="22" width="12" height="138" rx="4" fill="#0033ff"/>
+                              <rect x="294" y="125" width="12" height="35" rx="4" fill="#0033ff"/>
+                            `}
 
                         <!-- Outdoor Temperature Curved Overlay Line -->
                         <path
