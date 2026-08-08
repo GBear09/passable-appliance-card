@@ -1,20 +1,20 @@
 /**
  * Passable Appliance Card
- * Version: 1.3.6
+ * Version: 1.3.7
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
  * Restores 100% exact graphical layouts, SVGs, animations, embedded controls,
  * ring sliders, telemetry bars, 24-hour recirc timeline, and custom popups for ALL 6 appliances & mechanical systems:
- *  1. Refrigerator & Freezer (Scoped CSS French Door + Water Dispenser + Embedded Dial Popup + Presets)
+ *  1. Refrigerator & Freezer (Scoped CSS French Door + Vertically Centered Right Door Temp Display + Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Larger 1.85rem Temperature Display + Auto-Synced Filter Life Hours + Read-Only Remaining Lifespan Display)
+ *  6. HVAC Systems (Solid Faint Translucent Active Theme Colors + White Active Status Chip Text + Theme Variable Color Fallbacks)
  */
 
-const CARD_VERSION = "1.3.6";
+const CARD_VERSION = "1.3.7";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1804,19 +1804,19 @@ class PassableApplianceCard extends LitElement {
       stateLabel = "COOLING";
       stateIcon = "mdi:snowflake";
       isAnimated = true;
-      dynamicCardStyle = "background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(30, 41, 59, 0.7)); border: 1px solid rgba(56, 189, 248, 0.45); box-shadow: 0 4px 16px rgba(14, 165, 233, 0.2);";
+      dynamicCardStyle = "background: rgba(var(--rgb-info-color, 3, 169, 244), 0.14); border: 1px solid var(--info-color, #03a9f4); box-shadow: 0 2px 10px rgba(var(--rgb-info-color, 3, 169, 244), 0.2);";
     } else if (hvacAction === "heating") {
       stateClass = "active-heat";
       stateLabel = "HEATING";
       stateIcon = "mdi:fire";
       isAnimated = true;
-      dynamicCardStyle = "background: linear-gradient(135deg, rgba(249, 115, 22, 0.18), rgba(30, 41, 59, 0.7)); border: 1px solid rgba(249, 115, 22, 0.45); box-shadow: 0 4px 16px rgba(249, 115, 22, 0.2);";
+      dynamicCardStyle = "background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.14); border: 1px solid var(--warning-color, #ff9800); box-shadow: 0 2px 10px rgba(var(--rgb-warning-color, 255, 152, 0), 0.2);";
     } else if (hvacAction === "fan") {
       stateClass = "active-fan";
       stateLabel = "FAN ONLY";
       stateIcon = "mdi:fan";
       isAnimated = true;
-      dynamicCardStyle = "background: linear-gradient(135deg, rgba(74, 222, 128, 0.16), rgba(30, 41, 59, 0.7)); border: 1px solid rgba(74, 222, 128, 0.4);";
+      dynamicCardStyle = "background: rgba(var(--rgb-success-color, 76, 175, 80), 0.14); border: 1px solid var(--success-color, #4caf50); box-shadow: 0 2px 10px rgba(var(--rgb-success-color, 76, 175, 80), 0.2);";
     } else if (mode === "cool") {
       stateClass = "idle-cool";
       stateLabel = "COOL (IDLE)";
@@ -2377,14 +2377,13 @@ class PassableApplianceCard extends LitElement {
       .left-handle { right: -30px; z-index: 1; }
       .right-handle { left: -30px; z-index: 1; }
       .freezer-handle { position: absolute; top: 15px; left: 20px; right: 20px; height: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
-      .left-door-content { padding: 16px; height: 100%; display: flex; align-items: center; justify-content: flex-end; flex-direction: column; }
-      .right-door-content { padding: 16px; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
+      .right-door-content { padding: 16px; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; }
       .dispenser-group { display: flex; flex-direction: column; align-items: flex-start; width: 80%; }
       .dispenser { width: 100%; max-width: 90px; height: 125px; background: var(--primary-background-color); border-radius: 8px; display: flex; flex-direction: column; align-items: center; padding: 8px; box-sizing: border-box; cursor: pointer; }
       .dispenser-screen { width: 80%; height: 40px; background: var(--secondary-background-color); border-radius: 4px; margin-bottom: 8px; }
       .dispenser-lever { width: 20px; flex-grow: 1; background: var(--disabled-text-color); border-radius: 4px; }
       .temp-display { width: auto; min-width: 90px; text-align: center; color: var(--primary-text-color); cursor: pointer; background: rgba(0, 0, 0, 0.2); padding: 4px 8px; border-radius: 8px; }
-      .fridge-temp { display: flex; flex-direction: column; align-items: center; width: 80%; max-width: 120px; margin: auto 0; }
+      .fridge-temp { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 80%; max-width: 120px; margin: auto; }
       .freezer-temp { width: 60%; }
       .temp-value { font-size: 2.5em; font-weight: bold; line-height: 1; }
       .temp-setpoint { font-size: 1.3em; opacity: 0.8; }
@@ -2672,13 +2671,43 @@ class PassableApplianceCard extends LitElement {
 
       /* HIGH CONTRAST STATUS CHIPS */
       .status-chip { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; }
-      .status-chip.active-cool { background: rgba(14, 165, 233, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.5); text-shadow: 0 0 8px rgba(14, 165, 233, 0.4); }
-      .status-chip.idle-cool { background: rgba(14, 165, 233, 0.12); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.3); }
-      .status-chip.active-heat { background: rgba(249, 115, 22, 0.25); color: #ff9800; border: 1px solid rgba(249, 115, 22, 0.5); text-shadow: 0 0 8px rgba(249, 115, 22, 0.4); }
-      .status-chip.idle-heat { background: rgba(249, 115, 22, 0.12); color: #ffbd7a; border: 1px solid rgba(249, 115, 22, 0.3); }
-      .status-chip.active-fan { background: rgba(74, 222, 128, 0.25); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.5); }
-      .status-chip.idle-auto { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
-      .status-chip.power-off { background: rgba(255, 255, 255, 0.08); color: var(--secondary-text-color, #a1a1aa); border: 1px solid rgba(255, 255, 255, 0.15); }
+      .status-chip.active-cool {
+        background: var(--info-color, #0284c7);
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 0 0 8px rgba(var(--rgb-info-color, 3, 169, 244), 0.4);
+      }
+      .status-chip.idle-cool {
+        background: rgba(var(--rgb-info-color, 3, 169, 244), 0.12);
+        color: var(--info-color, #38bdf8);
+        border: 1px solid rgba(var(--rgb-info-color, 3, 169, 244), 0.3);
+      }
+      .status-chip.active-heat {
+        background: var(--warning-color, #ea580c);
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 0 0 8px rgba(var(--rgb-warning-color, 255, 152, 0), 0.4);
+      }
+      .status-chip.idle-heat {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.12);
+        color: var(--warning-color, #ff9800);
+        border: 1px solid rgba(var(--rgb-warning-color, 255, 152, 0), 0.3);
+      }
+      .status-chip.active-fan {
+        background: var(--success-color, #16a34a);
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+      }
+      .status-chip.idle-auto {
+        background: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+        border: 1px solid rgba(168, 85, 247, 0.3);
+      }
+      .status-chip.power-off {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--secondary-text-color, #a1a1aa);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+      }
 
       @media (max-width: 768px) {
         .popup-overlay { align-items: flex-end; overscroll-behavior: contain; touch-action: none; }
