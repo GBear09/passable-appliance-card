@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.4.6
+ * Version: 1.4.7
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Proper Lit svg Namespace Bar Rendering + High-Contrast Dark Active Tab Text + Enlarged 2.15rem Temp & 0.78rem Setpoint Typography)
+ *  6. HVAC Systems (Top-Level Static SVG rect Nodes to Guarantee SVG Namespace & Display All 10 Daily Bars on Every System)
  */
 
-const CARD_VERSION = "1.4.6";
+const CARD_VERSION = "1.4.7";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2064,6 +2064,7 @@ class PassableApplianceCard extends LitElement {
 
     const presetModes = climate.attributes.preset_modes || ["home", "away", "sleep", "ECO", "Alt Sleep"];
     const currentPreset = climate.attributes.preset_mode || "home";
+    const isUpstairs = unitKey === "upstairs";
 
     // 10-day runtime data auto-calculation / fallback from history stats or sensor attributes
     const historyData = [
@@ -2382,27 +2383,17 @@ class PassableApplianceCard extends LitElement {
                         <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">0.0</text>
                         <text x="315" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67</text>
 
-                        <!-- Vibrant Blue Cooling Runtime Vertical Bars in SVG Namespace -->
-                        ${(unitKey === "upstairs"
-                          ? [ 1.2, 2.0, 4.2, 5.0, 3.5, 3.1, 2.4, 5.2, 5.8, 3.8 ]
-                          : [ 0.8, 1.4, 3.4, 3.0, 2.6, 2.5, 2.0, 4.8, 5.2, 1.7 ]
-                        ).map((val, idx) => {
-                          const x = 40 + idx * 28;
-                          const h = Math.max(6, Math.min(140, (val / 6) * 140));
-                          const y = 160 - h;
-                          return svg`
-                            <rect
-                              x="${x}"
-                              y="${y}"
-                              width="14"
-                              height="${h}"
-                              rx="4"
-                              fill="#2563eb"
-                              stroke="#38bdf8"
-                              stroke-width="1.5"
-                            />
-                          `;
-                        })}
+                        <!-- 10 Daily Cooling Runtime Bars in Direct SVG Namespace -->
+                        <rect x="38" y="${isUpstairs ? 132 : 141}" width="14" height="${isUpstairs ? 28 : 19}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="66" y="${isUpstairs ? 113 : 127}" width="14" height="${isUpstairs ? 47 : 33}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="94" y="${isUpstairs ? 62 : 81}" width="14" height="${isUpstairs ? 98 : 79}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="122" y="${isUpstairs ? 43 : 90}" width="14" height="${isUpstairs ? 117 : 70}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="150" y="${isUpstairs ? 78 : 99}" width="14" height="${isUpstairs ? 82 : 61}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="178" y="${isUpstairs ? 88 : 102}" width="14" height="${isUpstairs ? 72 : 58}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="206" y="${isUpstairs ? 104 : 113}" width="14" height="${isUpstairs ? 56 : 47}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="234" y="${isUpstairs ? 38 : 48}" width="14" height="${isUpstairs ? 122 : 112}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="262" y="${isUpstairs ? 25 : 38}" width="14" height="${isUpstairs ? 135 : 122}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <rect x="290" y="${isUpstairs ? 71 : 120}" width="14" height="${isUpstairs ? 89 : 40}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
 
                         <!-- Outdoor Temperature Curved Overlay Line -->
                         <path
