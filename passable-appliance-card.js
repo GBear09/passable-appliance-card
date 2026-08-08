@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.3.1
+ * Version: 1.3.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Inline Title Preset Badges + Inline Setpoint Overshoot Offset + High-Contrast Active Mode Buttons + Consolidated Layout)
+ *  6. HVAC Systems (Inline Title Icons + Friendly Name Auto-Resolution with Custom Override + High-Contrast Mode Chips + Inline Overshoot Offset)
  */
 
-const CARD_VERSION = "1.3.1";
+const CARD_VERSION = "1.3.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1843,6 +1843,8 @@ class PassableApplianceCard extends LitElement {
       }
     }
 
+    const unitTitle = sysConfig.name || sysConfig.title || climate.attributes?.friendly_name || title || "HVAC System";
+
     // Preset display calculation
     const activePresetName = (climate.attributes.preset_mode && climate.attributes.preset_mode !== "temp" && climate.attributes.preset_mode !== "none") 
       ? climate.attributes.preset_mode 
@@ -1850,12 +1852,14 @@ class PassableApplianceCard extends LitElement {
 
     return html`
       <div class="hvac-unit-card ${stateClass}" style="${dynamicCardStyle}">
-        <!-- Left Section: Icon + Title Line with Inline Preset Badge + Status Chip -->
+        <!-- Left Section: Title Line with Inline Icon & Inline Preset Badge + Status Chip -->
         <div class="hvac-compact-left">
-          <ha-icon icon="${icon}" class="hvac-unit-icon"></ha-icon>
           <div class="hvac-compact-title-group">
             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span class="hvac-compact-name">${title}</span>
+              <span class="hvac-compact-name" style="display:inline-flex; align-items:center;">
+                <ha-icon icon="${icon}" style="--mdc-icon-size:15px; margin-right:5px; color:var(--primary-color); flex-shrink:0;"></ha-icon>
+                ${unitTitle}
+              </span>
               ${activePresetName
                 ? html`
                     <span
