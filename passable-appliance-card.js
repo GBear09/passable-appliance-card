@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.4.3
+ * Version: 1.4.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (2-Column 2x2 Overshoot Grid Panel + 'Recirculation Active' Label + System-Differentiated SVG Runtime Graphs)
+ *  6. HVAC Systems (Declared coolThresh/heatThresh Variables in _renderHvacModal + Fixed Gear Settings Popup Launch + 2-Column 2x2 Overshoot Grid Panel + Recirculation Active Label + Differentiated System Runtime Graphs)
  */
 
-const CARD_VERSION = "1.4.3";
+const CARD_VERSION = "1.4.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2043,6 +2043,8 @@ class PassableApplianceCard extends LitElement {
     const overshootActiveId = sysConfig.overshoot_active || c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
     const coolOvershootId = sysConfig.cool_overshoot || c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
     const heatOvershootId = sysConfig.heat_overshoot || c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
+    const coolThreshId = sysConfig.cool_overshoot_thresh || c[`${unitKey}_cool_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_cool";
+    const heatThreshId = sysConfig.heat_overshoot_thresh || c[`${unitKey}_heat_overshoot_thresh`] || "input_number.hvac_overshoot_threshold_heat";
     const filterHoursId = sysConfig.filter_hours || c[`${unitKey}_filter_hours`] || `sensor.hvac_filter_life_remaining_${unitKey}`;
     const filterLifeId = sysConfig.filter_life || c[`${unitKey}_filter_life`] || `input_number.hvac_filter_life_${unitKey}`;
 
@@ -2054,6 +2056,8 @@ class PassableApplianceCard extends LitElement {
     const overshootActiveObj = this._getEntity(overshootActiveId);
     const heatOvershoot = this._getEntity(heatOvershootId);
     const coolOvershoot = this._getEntity(coolOvershootId);
+    const coolThresh = this._getEntity(coolThreshId);
+    const heatThresh = this._getEntity(heatThreshId);
     const filterHours = this._getEntity(filterHoursId);
     const filterLife = this._getEntity(filterLifeId);
 
