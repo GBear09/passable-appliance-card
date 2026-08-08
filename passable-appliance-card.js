@@ -1,20 +1,20 @@
 /**
  * Passable Appliance Card
- * Version: 1.4.1
+ * Version: 1.4.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
  * Restores 100% exact graphical layouts, SVGs, animations, embedded controls,
  * ring sliders, telemetry bars, 24-hour recirc timeline, and custom popups for ALL 6 appliances & mechanical systems:
- *  1. Refrigerator & Freezer (Scoped CSS French Door + Horizontally Centered & Lower-Positioned Water Dispenser + Embedded Dial Popup + Presets)
+ *  1. Refrigerator & Freezer (Scoped CSS French Door + Water Dispenser Centered Between Outer Door Edge & Handle Bar + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Single Consolidated Gear Settings Button + Dedicated Fan Circulation Switch + SVG Combined Runtime & Outdoor Temp Curve Graph)
+ *  6. HVAC Systems (Fixed Stats & Fan Tab Variable Declarations + Single Consolidated Gear Settings Button + Dedicated Fan Circulation Switch + SVG Combined Runtime & Outdoor Temp Curve Graph)
  */
 
-const CARD_VERSION = "1.4.1";
+const CARD_VERSION = "1.4.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2039,6 +2039,7 @@ class PassableApplianceCard extends LitElement {
     const acCondensersId = c.ac_condensers_uncovered || "input_boolean.ac_condensers_uncovered";
     const outdoorTempId = c.outdoor_temp_sensor || "sensor.outdoor_temperature";
     const fanCircId = sysConfig.fan_circulation || c[`${unitKey}_fan_circulation`] || `input_number.hvac_fan_circulation_${unitKey}`;
+    const fanCircActiveId = sysConfig.fan_circ_active || c[`${unitKey}_fan_circ_active`] || `input_boolean.hvac_fan_circulation_active_${unitKey}`;
     const overshootActiveId = sysConfig.overshoot_active || c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
     const coolOvershootId = sysConfig.cool_overshoot || c[`${unitKey}_cool_overshoot`] || "input_number.hvac_overshoot_amount_cool";
     const heatOvershootId = sysConfig.heat_overshoot || c[`${unitKey}_heat_overshoot`] || "input_number.hvac_overshoot_amount_heat";
@@ -2049,6 +2050,7 @@ class PassableApplianceCard extends LitElement {
     const acCondensersObj = this._getEntity(acCondensersId);
     const outdoorTempObj = this._getEntity(outdoorTempId);
     const fanCircObj = this._getEntity(fanCircId);
+    const fanCircActiveObj = this._getEntity(fanCircActiveId);
     const overshootActiveObj = this._getEntity(overshootActiveId);
     const heatOvershoot = this._getEntity(heatOvershootId);
     const coolOvershoot = this._getEntity(coolOvershootId);
@@ -2547,7 +2549,7 @@ class PassableApplianceCard extends LitElement {
       .left-handle { right: -30px; z-index: 1; }
       .right-handle { left: -30px; z-index: 1; }
       .freezer-handle { position: absolute; top: 15px; left: 20px; right: 20px; height: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
-      .left-door-content { padding: 24px 16px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; box-sizing: border-box; }
+      .left-door-content { padding: 24px 34px 18px 12px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; box-sizing: border-box; }
       .right-door-content { padding: 16px; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; }
       .dispenser-group { display: flex; flex-direction: column; align-items: center; width: 85%; margin-bottom: 8px; }
       .dispenser { width: 100%; max-width: 90px; height: 125px; background: var(--primary-background-color); border-radius: 8px; display: flex; flex-direction: column; align-items: center; padding: 8px; box-sizing: border-box; cursor: pointer; }
