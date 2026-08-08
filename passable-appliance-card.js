@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.4.4
+ * Version: 1.4.5
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Declared coolThresh/heatThresh Variables in _renderHvacModal + Fixed Gear Settings Popup Launch + 2-Column 2x2 Overshoot Grid Panel + Recirculation Active Label + Differentiated System Runtime Graphs)
+ *  6. HVAC Systems (Dark Contrast Active Tab Text + Vibrant SVG Bar Fills with Outline + Enlarged 2.15rem Temperature & 0.78rem Setpoint Typography)
  */
 
-const CARD_VERSION = "1.4.4";
+const CARD_VERSION = "1.4.5";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2344,7 +2344,7 @@ class PassableApplianceCard extends LitElement {
                     <!-- Top Metrics Header Differentiated per System -->
                     <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; font-family:sans-serif;">
                       <div>
-                        <div style="font-size:1.5rem; font-weight:800; color:#ea580c; line-height:1;">${unitKey === 'upstairs' ? '0.4' : '0'}<span style="font-size:1rem; font-weight:600;">h</span></div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#ea580c; line-height:1;">0<span style="font-size:1rem; font-weight:600;">h</span></div>
                         <div style="font-size:0.7rem; color:var(--secondary-text-color);">Heating</div>
                       </div>
                       <div>
@@ -2381,31 +2381,31 @@ class PassableApplianceCard extends LitElement {
                         <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">0.0</text>
                         <text x="315" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67</text>
 
-                        <!-- Blue Cooling Runtime Vertical Bars (Differentiated per System) -->
+                        <!-- Vibrant Blue Cooling Runtime Vertical Bars with Outline -->
                         ${unitKey === 'upstairs'
                           ? html`
-                              <rect x="42" y="130" width="12" height="30" rx="4" fill="#0033ff"/>
-                              <rect x="70" y="110" width="12" height="50" rx="4" fill="#0033ff"/>
-                              <rect x="98" y="60.1" width="12" height="99.9" rx="4" fill="#0033ff"/>
-                              <rect x="126" y="50.1" width="12" height="109.9" rx="4" fill="#0033ff"/>
-                              <rect x="154" y="75" width="12" height="85" rx="4" fill="#0033ff"/>
-                              <rect x="182" y="85" width="12" height="75" rx="4" fill="#0033ff"/>
-                              <rect x="210" y="100" width="12" height="60" rx="4" fill="#0033ff"/>
-                              <rect x="238" y="30" width="12" height="130" rx="4" fill="#0033ff"/>
-                              <rect x="266" y="15" width="12" height="145" rx="4" fill="#0033ff"/>
-                              <rect x="294" y="70" width="12" height="90" rx="4" fill="#0033ff"/>
+                              <rect x="42" y="130" width="12" height="30" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="70" y="110" width="12" height="50" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="98" y="60.1" width="12" height="99.9" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="126" y="50.1" width="12" height="109.9" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="154" y="75" width="12" height="85" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="182" y="85" width="12" height="75" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="210" y="100" width="12" height="60" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="238" y="30" width="12" height="130" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="266" y="15" width="12" height="145" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="294" y="70" width="12" height="90" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
                             `
                           : html`
-                              <rect x="42" y="140" width="12" height="20" rx="4" fill="#0033ff"/>
-                              <rect x="70" y="120" width="12" height="40" rx="4" fill="#0033ff"/>
-                              <rect x="98" y="70" width="12" height="90" rx="4" fill="#0033ff"/>
-                              <rect x="126" y="80" width="12" height="80" rx="4" fill="#0033ff"/>
-                              <rect x="154" y="90" width="12" height="70" rx="4" fill="#0033ff"/>
-                              <rect x="182" y="92" width="12" height="68" rx="4" fill="#0033ff"/>
-                              <rect x="210" y="105" width="12" height="55" rx="4" fill="#0033ff"/>
-                              <rect x="238" y="35" width="12" height="125" rx="4" fill="#0033ff"/>
-                              <rect x="266" y="22" width="12" height="138" rx="4" fill="#0033ff"/>
-                              <rect x="294" y="125" width="12" height="35" rx="4" fill="#0033ff"/>
+                              <rect x="42" y="140" width="12" height="20" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="70" y="120" width="12" height="40" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="98" y="70" width="12" height="90" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="126" y="80" width="12" height="80" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="154" y="90" width="12" height="70" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="182" y="92" width="12" height="68" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="210" y="105" width="12" height="55" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="238" y="35" width="12" height="125" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="266" y="22" width="12" height="138" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
+                              <rect x="294" y="125" width="12" height="35" rx="4" fill="#2563eb" stroke="#38bdf8" stroke-width="1.5"/>
                             `}
 
                         <!-- Outdoor Temperature Curved Overlay Line -->
@@ -2901,9 +2901,9 @@ class PassableApplianceCard extends LitElement {
         transition: all 0.2s ease;
       }
       .hvac-tab-btn.active {
-        background: var(--primary-color, #0284c7);
-        color: #ffffff !important;
-        font-weight: 700;
+        background: var(--primary-color, #86efac);
+        color: #052e16 !important;
+        font-weight: 800;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
       }
       
