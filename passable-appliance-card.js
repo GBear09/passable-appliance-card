@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.3.4
+ * Version: 1.3.5
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Top-Right Preset Badge Position + Air Filter Hours Interactive Steppers + All Preset Modes Fully Rendered)
+ *  6. HVAC Systems (Side-by-Side Meta Chips Layout + Zero Overlap with Temperature Display + Filter Hours Steppers + High Contrast Buttons)
  */
 
-const CARD_VERSION = "1.3.4";
+const CARD_VERSION = "1.3.5";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1851,24 +1851,8 @@ class PassableApplianceCard extends LitElement {
       : (preset && preset.state !== "unavailable" && preset.state !== "unknown" ? preset.state : null);
 
     return html`
-      <div class="hvac-unit-card ${stateClass}" style="position:relative; ${dynamicCardStyle}">
-        ${activePresetName
-          ? html`
-              <span
-                class="hvac-mini-badge clickable hvac-top-right-preset"
-                @click=${(e) => { e.stopPropagation(); this._showHvacModal(unitKey, "setpoints"); }}
-                title="Active Preset: ${activePresetName} (Tap to change)"
-              >
-                <ha-icon
-                  icon="${this._getPresetIcon(activePresetName)}"
-                  style="--mdc-icon-size:11px; margin-right:2px; color:${this._getPresetColor(activePresetName)};"
-                ></ha-icon>
-                ${activePresetName}
-              </span>
-            `
-          : ""}
-
-        <!-- Left Section: Title Line with Inline Icon + Status Chip -->
+      <div class="hvac-unit-card ${stateClass}" style="${dynamicCardStyle}">
+        <!-- Left Section: Title Line with Inline Icon + Side-by-Side Meta Chips -->
         <div class="hvac-compact-left">
           <div class="hvac-compact-title-group">
             <span class="hvac-compact-name" style="display:inline-flex; align-items:center;">
@@ -1881,6 +1865,22 @@ class PassableApplianceCard extends LitElement {
                 <ha-icon icon="${stateIcon}" class="${stateClass === 'active-fan' ? 'hvac-spin-icon' : isAnimated ? 'hvac-pulse-icon' : ''}" style="--mdc-icon-size:11px; margin-right:3px;"></ha-icon>
                 ${stateLabel}
               </span>
+              ${activePresetName
+                ? html`
+                    <span
+                      class="hvac-mini-badge clickable"
+                      @click=${(e) => { e.stopPropagation(); this._showHvacModal(unitKey, "setpoints"); }}
+                      style="cursor:pointer; display:inline-flex; align-items:center;"
+                      title="Active Preset: ${activePresetName} (Tap to change)"
+                    >
+                      <ha-icon
+                        icon="${this._getPresetIcon(activePresetName)}"
+                        style="--mdc-icon-size:11px; margin-right:2px; color:${this._getPresetColor(activePresetName)};"
+                      ></ha-icon>
+                      ${activePresetName}
+                    </span>
+                  `
+                : ""}
               ${isFilterExpired
                 ? html`
                     <span
