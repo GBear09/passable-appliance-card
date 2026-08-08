@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.3.3
+ * Version: 1.3.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Clean Single-Icon Status Chips + Smooth Zero-Wobble Animations + Native Text Editor Selectors + Lightning Bolt Removed from Overshoot Subtext)
+ *  6. HVAC Systems (Top-Right Preset Badge Position + Air Filter Hours Interactive Steppers + All Preset Modes Fully Rendered)
  */
 
-const CARD_VERSION = "1.3.3";
+const CARD_VERSION = "1.3.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1851,32 +1851,30 @@ class PassableApplianceCard extends LitElement {
       : (preset && preset.state !== "unavailable" && preset.state !== "unknown" ? preset.state : null);
 
     return html`
-      <div class="hvac-unit-card ${stateClass}" style="${dynamicCardStyle}">
-        <!-- Left Section: Title Line with Inline Icon & Inline Preset Badge + Status Chip -->
+      <div class="hvac-unit-card ${stateClass}" style="position:relative; ${dynamicCardStyle}">
+        ${activePresetName
+          ? html`
+              <span
+                class="hvac-mini-badge clickable hvac-top-right-preset"
+                @click=${(e) => { e.stopPropagation(); this._showHvacModal(unitKey, "setpoints"); }}
+                title="Active Preset: ${activePresetName} (Tap to change)"
+              >
+                <ha-icon
+                  icon="${this._getPresetIcon(activePresetName)}"
+                  style="--mdc-icon-size:11px; margin-right:2px; color:${this._getPresetColor(activePresetName)};"
+                ></ha-icon>
+                ${activePresetName}
+              </span>
+            `
+          : ""}
+
+        <!-- Left Section: Title Line with Inline Icon + Status Chip -->
         <div class="hvac-compact-left">
           <div class="hvac-compact-title-group">
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span class="hvac-compact-name" style="display:inline-flex; align-items:center;">
-                <ha-icon icon="${icon}" style="--mdc-icon-size:15px; margin-right:5px; color:var(--primary-color); flex-shrink:0;"></ha-icon>
-                ${unitTitle}
-              </span>
-              ${activePresetName
-                ? html`
-                    <span
-                      class="hvac-mini-badge clickable"
-                      @click=${(e) => { e.stopPropagation(); this._showHvacModal(unitKey, "setpoints"); }}
-                      style="cursor:pointer; display:inline-flex; align-items:center;"
-                      title="Active Preset: ${activePresetName} (Tap to change)"
-                    >
-                      <ha-icon
-                        icon="${this._getPresetIcon(activePresetName)}"
-                        style="--mdc-icon-size:11px; margin-right:2px; color:${this._getPresetColor(activePresetName)};"
-                      ></ha-icon>
-                      ${activePresetName}
-                    </span>
-                  `
-                : ""}
-            </div>
+            <span class="hvac-compact-name" style="display:inline-flex; align-items:center;">
+              <ha-icon icon="${icon}" style="--mdc-icon-size:15px; margin-right:5px; color:var(--primary-color); flex-shrink:0;"></ha-icon>
+              ${unitTitle}
+            </span>
 
             <div class="hvac-compact-meta">
               <span class="status-chip ${stateClass}">
@@ -2196,9 +2194,31 @@ class PassableApplianceCard extends LitElement {
                 `
               : html`
                   <div class="materials-section">
-                    <h3><ha-icon icon="mdi:air-filter"></ha-icon> Air Filter Status</h3>
-                    <p>Remaining Run Time: <strong>${filterHours.state || 0} Hours</strong></p>
-                    <p>Max Recommended Life: <strong>${filterLife.state || 300} Hours</strong></p>
+                    <h3><ha-icon icon="mdi:air-filter"></ha-icon> Air Filter Lifespan & Settings</h3>
+                    
+                    <div class="control-row" style="margin-bottom:10px;">
+                      <div class="control-label-group">
+                        <ha-icon icon="mdi:timer-outline"></ha-icon>
+                        <span class="control-label">Filter Life Remaining</span>
+                      </div>
+                      <div class="step-controller-pill">
+                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterHoursId, -10)}>-10h</button>
+                        <span class="pill-value">${filterHours.state || 0} hrs</span>
+                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterHoursId, 10)}>+10h</button>
+                      </div>
+                    </div>
+
+                    <div class="control-row">
+                      <div class="control-label-group">
+                        <ha-icon icon="mdi:speedometer"></ha-icon>
+                        <span class="control-label">Max Recommended Lifespan</span>
+                      </div>
+                      <div class="step-controller-pill">
+                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterLifeId, -25)}>-25h</button>
+                        <span class="pill-value">${filterLife.state || 300} hrs</span>
+                        <button class="pill-btn" @click=${() => this._adjustNumberEntity(filterLifeId, 25)}>+25h</button>
+                      </div>
+                    </div>
                   </div>
 
                   <div class="step-timeline">
@@ -2626,6 +2646,22 @@ class PassableApplianceCard extends LitElement {
       .hvac-mode-btn.active { background: var(--primary-color, #86efac); color: #052e16 !important; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
       .global-preset-badge { display: flex; align-items: center; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
       
+      .hvac-top-right-preset {
+        position: absolute;
+        top: 6px;
+        right: 88px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.65rem;
+        padding: 2px 7px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        z-index: 2;
+      }
+
       /* HIGH CONTRAST STATUS CHIPS */
       .status-chip { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; }
       .status-chip.active-cool { background: rgba(14, 165, 233, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.5); text-shadow: 0 0 8px rgba(14, 165, 233, 0.4); }
