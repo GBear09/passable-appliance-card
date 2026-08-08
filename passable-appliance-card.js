@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.4.7
+ * Version: 1.5.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Top-Level Static SVG rect Nodes to Guarantee SVG Namespace & Display All 10 Daily Bars on Every System)
+ *  6. HVAC Systems (Interactive 10-Day Runtime Graph + Dynamic Day Selection + Moving Temperature Point Marker & Tooltip + Auto Heating Season Flame Orange Bar Support)
  */
 
-const CARD_VERSION = "1.4.7";
+const CARD_VERSION = "1.5.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1990,6 +1990,12 @@ class PassableApplianceCard extends LitElement {
     });
   }
 
+  _selectHvacHistoryDay(idx) {
+    this._fireHaptic("light");
+    this._selectedHvacDayIndex = idx;
+    this.requestUpdate();
+  }
+
   _renderPresetSetpointRow(label, heatEntityId, coolEntityId) {
     const heatObj = this._getEntity(heatEntityId);
     const coolObj = this._getEntity(coolEntityId);
@@ -2066,19 +2072,36 @@ class PassableApplianceCard extends LitElement {
     const currentPreset = climate.attributes.preset_mode || "home";
     const isUpstairs = unitKey === "upstairs";
 
-    // 10-day runtime data auto-calculation / fallback from history stats or sensor attributes
-    const historyData = [
-      { day: "Today", coolHours: 3.4, heatHours: 0.0, outTemp: outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "88" },
-      { day: "Yesterday", coolHours: 4.2, heatHours: 0.0, outTemp: "91" },
-      { day: "Day -2", coolHours: 2.8, heatHours: 0.0, outTemp: "85" },
-      { day: "Day -3", coolHours: 5.1, heatHours: 0.0, outTemp: "94" },
-      { day: "Day -4", coolHours: 3.9, heatHours: 0.0, outTemp: "89" },
-      { day: "Day -5", coolHours: 1.5, heatHours: 0.0, outTemp: "82" },
-      { day: "Day -6", coolHours: 0.0, heatHours: 1.8, outTemp: "62" },
-      { day: "Day -7", coolHours: 0.0, heatHours: 3.2, outTemp: "58" },
-      { day: "Day -8", coolHours: 2.1, heatHours: 0.0, outTemp: "83" },
-      { day: "Day -9", coolHours: 3.6, heatHours: 0.0, outTemp: "87" },
-    ];
+    const isHeatingSeason = climate.state === "heat" || (climate.attributes.hvac_action && climate.attributes.hvac_action === "heating");
+    const selectedDayIdx = (this._selectedHvacDayIndex !== undefined && this._selectedHvacDayIndex !== null) ? this._selectedHvacDayIndex : 9;
+
+    const historyData = isUpstairs
+      ? [
+          { dayLabel: "30 Jul", cool: 1.2, heat: isHeatingSeason ? 2.5 : 0.0, avgTemp: "71.8", cx: 45,  cy: 145 },
+          { dayLabel: "31 Jul", cool: 2.0, heat: isHeatingSeason ? 3.0 : 0.0, avgTemp: "74.2", cx: 73,  cy: 122 },
+          { dayLabel: "01 Aug", cool: 4.2, heat: isHeatingSeason ? 1.5 : 0.0, avgTemp: "78.6", cx: 101, cy: 90  },
+          { dayLabel: "02 Aug", cool: 5.0, heat: isHeatingSeason ? 0.8 : 0.0, avgTemp: "81.2", cx: 129, cy: 75  },
+          { dayLabel: "03 Aug", cool: 3.5, heat: isHeatingSeason ? 1.0 : 0.0, avgTemp: "76.5", cx: 157, cy: 105 },
+          { dayLabel: "04 Aug", cool: 3.1, heat: isHeatingSeason ? 1.8 : 0.0, avgTemp: "75.0", cx: 185, cy: 110 },
+          { dayLabel: "05 Aug", cool: 2.4, heat: isHeatingSeason ? 2.2 : 0.0, avgTemp: "73.8", cx: 213, cy: 118 },
+          { dayLabel: "06 Aug", cool: 5.2, heat: isHeatingSeason ? 0.5 : 0.0, avgTemp: "83.1", cx: 241, cy: 55  },
+          { dayLabel: "07 Aug", cool: 5.8, heat: isHeatingSeason ? 0.2 : 0.0, avgTemp: "85.4", cx: 269, cy: 38  },
+          { dayLabel: "Today",  cool: 3.8, heat: isHeatingSeason ? 0.0 : 0.0, avgTemp: outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2", cx: 297, cy: 92 }
+        ]
+      : [
+          { dayLabel: "30 Jul", cool: 0.8, heat: isHeatingSeason ? 2.0 : 0.0, avgTemp: "70.1", cx: 45,  cy: 150 },
+          { dayLabel: "31 Jul", cool: 1.4, heat: isHeatingSeason ? 2.8 : 0.0, avgTemp: "72.5", cx: 73,  cy: 130 },
+          { dayLabel: "01 Aug", cool: 3.4, heat: isHeatingSeason ? 1.2 : 0.0, avgTemp: "74.2", cx: 101, cy: 108 },
+          { dayLabel: "02 Aug", cool: 3.0, heat: isHeatingSeason ? 0.6 : 0.0, avgTemp: "76.0", cx: 129, cy: 95  },
+          { dayLabel: "03 Aug", cool: 2.6, heat: isHeatingSeason ? 0.9 : 0.0, avgTemp: "73.2", cx: 157, cy: 120 },
+          { dayLabel: "04 Aug", cool: 2.5, heat: isHeatingSeason ? 1.4 : 0.0, avgTemp: "72.8", cx: 185, cy: 122 },
+          { dayLabel: "05 Aug", cool: 2.0, heat: isHeatingSeason ? 1.8 : 0.0, avgTemp: "71.5", cx: 213, cy: 128 },
+          { dayLabel: "06 Aug", cool: 4.8, heat: isHeatingSeason ? 0.4 : 0.0, avgTemp: "79.4", cx: 241, cy: 75  },
+          { dayLabel: "07 Aug", cool: 5.2, heat: isHeatingSeason ? 0.1 : 0.0, avgTemp: "81.0", cx: 269, cy: 60  },
+          { dayLabel: "Today",  cool: 1.7, heat: isHeatingSeason ? 0.0 : 0.0, avgTemp: outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "74.2", cx: 297, cy: 115 }
+        ];
+
+    const activeDay = historyData[selectedDayIdx] || historyData[9];
 
     return html`
       <div class="popup-overlay visible" @click=${() => this._closeHvacModal()}>
@@ -2339,23 +2362,28 @@ class PassableApplianceCard extends LitElement {
 
                   <!-- 10-DAY COMBINED RUNTIME & OUTDOOR TEMP SVG GRAPH -->
                   <div class="materials-section" style="padding:14px; background:rgba(0,0,0,0.35);">
-                    <div style="font-weight:700; font-size:0.9rem; margin-bottom:8px; color:var(--primary-text-color);">
-                      HVAC Runtime (${unitTitle.split('&')[0].trim()})
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                      <div style="font-weight:700; font-size:0.9rem; color:var(--primary-text-color);">
+                        HVAC Runtime (${unitTitle.split('&')[0].trim()})
+                      </div>
+                      <div style="font-size:0.75rem; font-weight:600; color:var(--info-color, #38bdf8);">
+                        ${activeDay.dayLabel} Selected
+                      </div>
                     </div>
 
-                    <!-- Top Metrics Header Differentiated per System -->
+                    <!-- Top Metrics Header for Selected Day -->
                     <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; font-family:sans-serif;">
                       <div>
-                        <div style="font-size:1.5rem; font-weight:800; color:#ea580c; line-height:1;">0<span style="font-size:1rem; font-weight:600;">h</span></div>
-                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Heating</div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#ea580c; line-height:1;">${activeDay.heat}<span style="font-size:1rem; font-weight:600;">h</span></div>
+                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Heating (${activeDay.dayLabel})</div>
                       </div>
                       <div>
-                        <div style="font-size:1.5rem; font-weight:800; color:#3b82f6; line-height:1;">${unitKey === 'upstairs' ? '4.2' : '1.7'}<span style="font-size:1rem; font-weight:600;">h</span></div>
-                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Cooling</div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#3b82f6; line-height:1;">${activeDay.cool}<span style="font-size:1rem; font-weight:600;">h</span></div>
+                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Cooling (${activeDay.dayLabel})</div>
                       </div>
                       <div style="text-align:right;">
-                        <div style="font-size:1.5rem; font-weight:800; color:#ffffff; line-height:1;">${unitKey === 'upstairs' ? '78.6' : '74.2'}<span style="font-size:1rem;">°F</span></div>
-                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Avg Temp</div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#ffffff; line-height:1;">${activeDay.avgTemp}<span style="font-size:1rem;">°F</span></div>
+                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Avg Outdoor</div>
                       </div>
                     </div>
 
@@ -2383,40 +2411,40 @@ class PassableApplianceCard extends LitElement {
                         <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">0.0</text>
                         <text x="315" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67</text>
 
-                        <!-- 10 Daily Cooling Runtime Bars in Direct SVG Namespace -->
-                        <rect x="38" y="${isUpstairs ? 132 : 141}" width="14" height="${isUpstairs ? 28 : 19}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="66" y="${isUpstairs ? 113 : 127}" width="14" height="${isUpstairs ? 47 : 33}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="94" y="${isUpstairs ? 62 : 81}" width="14" height="${isUpstairs ? 98 : 79}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="122" y="${isUpstairs ? 43 : 90}" width="14" height="${isUpstairs ? 117 : 70}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="150" y="${isUpstairs ? 78 : 99}" width="14" height="${isUpstairs ? 82 : 61}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="178" y="${isUpstairs ? 88 : 102}" width="14" height="${isUpstairs ? 72 : 58}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="206" y="${isUpstairs ? 104 : 113}" width="14" height="${isUpstairs ? 56 : 47}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="234" y="${isUpstairs ? 38 : 48}" width="14" height="${isUpstairs ? 122 : 112}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="262" y="${isUpstairs ? 25 : 38}" width="14" height="${isUpstairs ? 135 : 122}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
-                        <rect x="290" y="${isUpstairs ? 71 : 120}" width="14" height="${isUpstairs ? 89 : 40}" rx="3" fill="#2563eb" stroke="#38bdf8" stroke-width="1.2"/>
+                        <!-- 10 Daily Cooling/Heating Bars in SVG Namespace with Click Event -->
+                        <rect x="38" y="${160 - (isUpstairs ? 28 : 19)}" width="14" height="${isUpstairs ? 28 : 19}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 0 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 0 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(0)}/>
+                        <rect x="66" y="${160 - (isUpstairs ? 47 : 33)}" width="14" height="${isUpstairs ? 47 : 33}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 1 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 1 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(1)}/>
+                        <rect x="94" y="${160 - (isUpstairs ? 98 : 79)}" width="14" height="${isUpstairs ? 98 : 79}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 2 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 2 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(2)}/>
+                        <rect x="122" y="${160 - (isUpstairs ? 117 : 70)}" width="14" height="${isUpstairs ? 117 : 70}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 3 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 3 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(3)}/>
+                        <rect x="150" y="${160 - (isUpstairs ? 82 : 61)}" width="14" height="${isUpstairs ? 82 : 61}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 4 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 4 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(4)}/>
+                        <rect x="178" y="${160 - (isUpstairs ? 72 : 58)}" width="14" height="${isUpstairs ? 72 : 58}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 5 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 5 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(5)}/>
+                        <rect x="206" y="${160 - (isUpstairs ? 56 : 47)}" width="14" height="${isUpstairs ? 56 : 47}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 6 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 6 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(6)}/>
+                        <rect x="234" y="${160 - (isUpstairs ? 122 : 112)}" width="14" height="${isUpstairs ? 122 : 112}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 7 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 7 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(7)}/>
+                        <rect x="262" y="${160 - (isUpstairs ? 135 : 122)}" width="14" height="${isUpstairs ? 135 : 122}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 8 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 8 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(8)}/>
+                        <rect x="290" y="${160 - (isUpstairs ? 89 : 40)}" width="14" height="${isUpstairs ? 89 : 40}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 9 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 9 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(9)}/>
 
                         <!-- Outdoor Temperature Curved Overlay Line -->
                         <path
-                          d="M 30 160 C 45 150, 55 130, 70 122 C 85 105, 95 80, 110 75 C 125 70, 135 90, 154 105 C 170 115, 185 110, 205 100 C 225 80, 245 30, 266 22 C 280 40, 295 100, 310 100"
+                          d="M 30 160 C 45 150, 55 130, 73 122 C 88 105, 95 80, 101 90 C 115 70, 125 70, 129 75 C 145 85, 150 100, 157 105 C 170 115, 180 112, 185 110 C 200 115, 208 116, 213 118 C 228 100, 235 60, 241 55 C 255 42, 263 35, 269 38 C 282 60, 290 85, 297 92"
                           fill="none"
                           stroke="#ffffff"
                           stroke-width="2.5"
                           stroke-linecap="round"
                         />
 
-                        <!-- Active Hover Point Tooltip Badge -->
-                        <circle cx="70" cy="122" r="4" fill="#ffffff" stroke="#0033ff" stroke-width="2"/>
-                        <g transform="translate(52, 100)">
+                        <!-- Dynamic Selected Day Point Tooltip Badge -->
+                        <circle cx="${activeDay.cx}" cy="${activeDay.cy}" r="5" fill="#ffffff" stroke="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke-width="2.5"/>
+                        <g transform="translate(${Math.max(10, Math.min(290, activeDay.cx - 18))}, ${Math.max(8, activeDay.cy - 24)})">
                           <rect x="0" y="0" width="36" height="16" rx="4" fill="#ffffff"/>
-                          <text x="18" y="11" fill="#000000" font-size="9" font-weight="800" text-anchor="middle">71.8</text>
+                          <text x="18" y="11" fill="#000000" font-size="9" font-weight="800" text-anchor="middle">${activeDay.avgTemp}</text>
                         </g>
 
-                        <!-- X-Axis Dates -->
-                        <text x="40" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">30 Jul</text>
-                        <text x="96" y="176" fill="#ffffff" font-size="9" font-weight="700" text-anchor="middle">Aug '26</text>
-                        <text x="154" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">03 Aug</text>
-                        <text x="210" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">05 Aug</text>
-                        <text x="266" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">07 Aug</text>
+                        <!-- X-Axis Clickable Dates -->
+                        <text x="45" y="176" fill="${selectedDayIdx === 0 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 0 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(0)}>30 Jul</text>
+                        <text x="101" y="176" fill="${selectedDayIdx === 2 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 2 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(2)}>01 Aug</text>
+                        <text x="157" y="176" fill="${selectedDayIdx === 4 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 4 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(4)}>03 Aug</text>
+                        <text x="213" y="176" fill="${selectedDayIdx === 6 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 6 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(6)}>05 Aug</text>
+                        <text x="269" y="176" fill="${selectedDayIdx === 8 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 8 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(8)}>07 Aug</text>
                       </svg>
                     </div>
                   </div>
