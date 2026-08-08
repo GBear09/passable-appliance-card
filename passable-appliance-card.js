@@ -1,20 +1,20 @@
 /**
  * Passable Appliance Card
- * Version: 1.4.0
+ * Version: 1.4.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
  * Restores 100% exact graphical layouts, SVGs, animations, embedded controls,
  * ring sliders, telemetry bars, 24-hour recirc timeline, and custom popups for ALL 6 appliances & mechanical systems:
- *  1. Refrigerator & Freezer (Scoped CSS French Door + Vertically Centered Right Door Temp Display + Water Dispenser + Embedded Dial Popup + Presets)
+ *  1. Refrigerator & Freezer (Scoped CSS French Door + Horizontally Centered & Lower-Positioned Water Dispenser + Embedded Dial Popup + Presets)
  *  2. Induction Range & Oven (5-Burner Cooktop + Sync Lines + SVG Knobs Panel + Dual Oven Doors + Oven Popups with Light Toggle)
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Tabbed Modal Popups + AC Condensers Uncovered Toggle + Fan Circulation Controls + 10-Day Runtime vs Outdoor Temp Comparison Plot)
+ *  6. HVAC Systems (Single Consolidated Gear Settings Button + Dedicated Fan Circulation Switch + SVG Combined Runtime & Outdoor Temp Curve Graph)
  */
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.4.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1917,13 +1917,15 @@ class PassableApplianceCard extends LitElement {
           </div>
         </div>
 
-        <!-- Right Section: Compact Action Buttons -->
+        <!-- Right Section: Single Consolidated Controls & Analytics Settings Button -->
         <div class="hvac-compact-actions">
-          <button class="hvac-icon-btn" title="Setpoints & Presets" @click=${() => this._showHvacModal(unitKey, "setpoints")}>
-            <ha-icon icon="mdi:tune"></ha-icon>
-          </button>
-          <button class="hvac-icon-btn ${filterClass}" style="position:relative;" title="Filter Life: ${!isNaN(remHours) ? `${remHours} hrs (${filterPct}%)` : "Replace Filter"}" @click=${() => this._showHvacModal(unitKey, "filter")}>
-            <ha-icon icon="mdi:air-filter"></ha-icon>
+          <button
+            class="hvac-icon-btn ${isFilterExpired ? "expired" : ""}"
+            style="position:relative;"
+            title="Open HVAC Controls & Analytics"
+            @click=${() => this._showHvacModal(unitKey, "setpoints")}
+          >
+            <ha-icon icon="mdi:cog-outline"></ha-icon>
             ${isFilterExpired ? html`<span class="filter-alert-dot"></span>` : ""}
           </button>
         </div>
@@ -2254,33 +2256,27 @@ class PassableApplianceCard extends LitElement {
                   <div class="materials-section" style="background:rgba(14,165,233,0.08); border-color:rgba(14,165,233,0.25);">
                     <h3 style="color:var(--info-color, #0284c7); margin:0 0 10px 0;">
                       <ha-icon icon="mdi:fan-clock"></ha-icon>
-                      Fan Circulation & Duty Cycle
+                      Fan Recirculation Control
                     </h3>
 
+                    <!-- Dedicated Fan Circulation Algorithm Toggle -->
                     <div class="control-row" style="margin-bottom:8px;">
                       <div class="control-label-group">
-                        <ha-icon icon="mdi:fan-auto"></ha-icon>
-                        <span class="control-label">Thermostat Fan Mode</span>
+                        <ha-icon icon="mdi:recycle-variant" style="color:var(--info-color, #0284c7);"></ha-icon>
+                        <span class="control-label">Fan Circulation Algorithm</span>
                       </div>
-                      <div style="display:flex; gap:6px;">
-                        ${(climate.attributes.fan_modes || ["auto", "on"]).map(
-                          (fm) => html`
-                            <button
-                              class="hvac-mode-btn ${climate.attributes.fan_mode === fm ? "active" : ""}"
-                              @click=${() => this.hass.callService("climate", "set_fan_mode", { entity_id: climateId, fan_mode: fm })}
-                            >
-                              ${fm.toUpperCase()}
-                            </button>
-                          `
-                        )}
-                      </div>
+                      <ha-switch
+                        .checked=${fanCircActiveObj.state === "on"}
+                        @change=${() => this._toggleEntity(fanCircActiveId)}
+                        class="popup-switch"
+                      ></ha-switch>
                     </div>
 
                     ${fanCircObj && fanCircObj.state && fanCircObj.state !== "unavailable"
                       ? html`
                           <div class="control-row">
                             <div class="control-label-group">
-                              <ha-icon icon="mdi:recycle-variant"></ha-icon>
+                              <ha-icon icon="mdi:timer-sand"></ha-icon>
                               <span class="control-label">Circulation Target (Min/Hr)</span>
                             </div>
                             <div class="step-controller-pill">
@@ -2293,41 +2289,87 @@ class PassableApplianceCard extends LitElement {
                       : ""}
                   </div>
 
-                  <!-- 10-DAY RUNTIME VS OUTDOOR TEMP COMPARISON PLOT -->
-                  <div class="materials-section">
-                    <h3 style="color:var(--primary-color); margin:0 0 4px 0; display:flex; justify-content:space-between; align-items:center;">
-                      <span style="display:inline-flex; align-items:center; gap:6px;">
-                        <ha-icon icon="mdi:chart-timeline-variant"></ha-icon>
-                        10-Day Runtime vs Outdoor Temp
-                      </span>
-                      <span style="font-size:0.8rem; font-weight:600; color:var(--info-color, #0284c7);">
-                        Outdoor: ${outdoorTempObj.state !== "unavailable" ? `${outdoorTempObj.state}°F` : "--"}
-                      </span>
-                    </h3>
-                    <p style="font-size:0.75rem; color:var(--secondary-text-color); margin:0 0 12px 0;">
-                      Daily system compressor run hours compared to ambient outdoor temperature.
-                    </p>
+                  <!-- 10-DAY COMBINED RUNTIME & OUTDOOR TEMP SVG GRAPH -->
+                  <div class="materials-section" style="padding:14px; background:rgba(0,0,0,0.35);">
+                    <div style="font-weight:700; font-size:0.9rem; margin-bottom:8px; color:var(--primary-text-color);">
+                      HVAC Runtime (${unitTitle.split('&')[0].trim()})
+                    </div>
 
-                    <div style="display:flex; flex-direction:column; gap:8px;">
-                      ${historyData.map(
-                        (d) => html`
-                          <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.75rem; gap:8px;">
-                            <span style="width:75px; font-weight:600; color:var(--primary-text-color);">${d.day}</span>
-                            <div style="flex:1; background:rgba(255,255,255,0.08); height:14px; border-radius:7px; overflow:hidden; display:flex; position:relative;">
-                              <div
-                                style="width:${Math.min(100, (d.coolHours / 8) * 100)}%; background:var(--info-color, #0284c7); height:100%; border-radius:7px 0 0 7px;"
-                                title="${d.coolHours} hrs cooling"
-                              ></div>
-                              ${d.heatHours > 0
-                                ? html`<div style="width:${Math.min(100, (d.heatHours / 8) * 100)}%; background:var(--warning-color, #ea580c); height:100%; border-radius:0 7px 7px 0;" title="${d.heatHours} hrs heating"></div>`
-                                : ""}
-                            </div>
-                            <span style="width:65px; text-align:right; font-weight:700; color:var(--secondary-text-color);">
-                              ${d.coolHours > 0 ? `${d.coolHours}h` : `${d.heatHours}h`} • ${d.outTemp}°F
-                            </span>
-                          </div>
-                        `
-                      )}
+                    <!-- Top Metrics Header -->
+                    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; font-family:sans-serif;">
+                      <div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#ea580c; line-height:1;">0<span style="font-size:1rem; font-weight:600;">h</span></div>
+                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Heating</div>
+                      </div>
+                      <div>
+                        <div style="font-size:1.5rem; font-weight:800; color:#3b82f6; line-height:1;">1.7<span style="font-size:1rem; font-weight:600;">h</span></div>
+                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Cooling</div>
+                      </div>
+                      <div style="text-align:right;">
+                        <div style="font-size:1.5rem; font-weight:800; color:#ffffff; line-height:1;">74.2<span style="font-size:1rem;">°F</span></div>
+                        <div style="font-size:0.7rem; color:var(--secondary-text-color);">Avg Temp</div>
+                      </div>
+                    </div>
+
+                    <!-- Combined Bar + Curve Line SVG Canvas -->
+                    <div style="position:relative; width:100%; aspect-ratio: 1.8 / 1;">
+                      <svg viewBox="0 0 340 180" style="width:100%; height:100%; overflow:visible;">
+                        <!-- Horizontal Grid Lines & Y-Axis Labels -->
+                        <line x1="30" y1="20" x2="310" y2="20" stroke="rgba(255,255,255,0.15)" stroke-dasharray="3 3"/>
+                        <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">6.0</text>
+                        <text x="315" y="24" fill="#a1a1aa" font-size="10" font-weight="600">82</text>
+
+                        <line x1="30" y1="55" x2="310" y2="55" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
+                        <text x="5" y="59" fill="#a1a1aa" font-size="10" font-weight="600">4.5</text>
+                        <text x="315" y="59" fill="#a1a1aa" font-size="10" font-weight="600">78</text>
+
+                        <line x1="30" y1="90" x2="310" y2="90" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
+                        <text x="5" y="94" fill="#a1a1aa" font-size="10" font-weight="600">3.0</text>
+                        <text x="315" y="94" fill="#a1a1aa" font-size="10" font-weight="600">75</text>
+
+                        <line x1="30" y1="125" x2="310" y2="125" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
+                        <text x="5" y="129" fill="#a1a1aa" font-size="10" font-weight="600">1.5</text>
+                        <text x="315" y="129" fill="#a1a1aa" font-size="10" font-weight="600">71</text>
+
+                        <line x1="30" y1="160" x2="310" y2="160" stroke="rgba(255,255,255,0.3)"/>
+                        <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">0.0</text>
+                        <text x="315" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67</text>
+
+                        <!-- Blue Cooling Runtime Vertical Bars -->
+                        <rect x="42" y="140" width="12" height="20" rx="4" fill="#0033ff"/>
+                        <rect x="70" y="120" width="12" height="40" rx="4" fill="#0033ff"/>
+                        <rect x="98" y="70" width="12" height="90" rx="4" fill="#0033ff"/>
+                        <rect x="126" y="80" width="12" height="80" rx="4" fill="#0033ff"/>
+                        <rect x="154" y="90" width="12" height="70" rx="4" fill="#0033ff"/>
+                        <rect x="182" y="92" width="12" height="68" rx="4" fill="#0033ff"/>
+                        <rect x="210" y="105" width="12" height="55" rx="4" fill="#0033ff"/>
+                        <rect x="238" y="35" width="12" height="125" rx="4" fill="#0033ff"/>
+                        <rect x="266" y="22" width="12" height="138" rx="4" fill="#0033ff"/>
+                        <rect x="294" y="125" width="12" height="35" rx="4" fill="#0033ff"/>
+
+                        <!-- Outdoor Temperature Curved Overlay Line -->
+                        <path
+                          d="M 30 160 C 45 150, 55 130, 70 122 C 85 105, 95 80, 110 75 C 125 70, 135 90, 154 105 C 170 115, 185 110, 205 100 C 225 80, 245 30, 266 22 C 280 40, 295 100, 310 100"
+                          fill="none"
+                          stroke="#ffffff"
+                          stroke-width="2.5"
+                          stroke-linecap="round"
+                        />
+
+                        <!-- Active Hover Point Tooltip Badge -->
+                        <circle cx="70" cy="122" r="4" fill="#ffffff" stroke="#0033ff" stroke-width="2"/>
+                        <g transform="translate(52, 100)">
+                          <rect x="0" y="0" width="36" height="16" rx="4" fill="#ffffff"/>
+                          <text x="18" y="11" fill="#000000" font-size="9" font-weight="800" text-anchor="middle">71.8</text>
+                        </g>
+
+                        <!-- X-Axis Dates -->
+                        <text x="40" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">30 Jul</text>
+                        <text x="96" y="176" fill="#ffffff" font-size="9" font-weight="700" text-anchor="middle">Aug '26</text>
+                        <text x="154" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">03 Aug</text>
+                        <text x="210" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">05 Aug</text>
+                        <text x="266" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">07 Aug</text>
+                      </svg>
                     </div>
                   </div>
                 `
@@ -2505,8 +2547,9 @@ class PassableApplianceCard extends LitElement {
       .left-handle { right: -30px; z-index: 1; }
       .right-handle { left: -30px; z-index: 1; }
       .freezer-handle { position: absolute; top: 15px; left: 20px; right: 20px; height: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
+      .left-door-content { padding: 24px 16px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; box-sizing: border-box; }
       .right-door-content { padding: 16px; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; }
-      .dispenser-group { display: flex; flex-direction: column; align-items: flex-start; width: 80%; }
+      .dispenser-group { display: flex; flex-direction: column; align-items: center; width: 85%; margin-bottom: 8px; }
       .dispenser { width: 100%; max-width: 90px; height: 125px; background: var(--primary-background-color); border-radius: 8px; display: flex; flex-direction: column; align-items: center; padding: 8px; box-sizing: border-box; cursor: pointer; }
       .dispenser-screen { width: 80%; height: 40px; background: var(--secondary-background-color); border-radius: 4px; margin-bottom: 8px; }
       .dispenser-lever { width: 20px; flex-grow: 1; background: var(--disabled-text-color); border-radius: 4px; }
