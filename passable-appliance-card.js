@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.3.2
+ * Version: 1.3.3
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Inline Title Icons + Friendly Name Auto-Resolution with Custom Override + High-Contrast Mode Chips + Inline Overshoot Offset)
+ *  6. HVAC Systems (Clean Single-Icon Status Chips + Smooth Zero-Wobble Animations + Native Text Editor Selectors + Lightning Bolt Removed from Overshoot Subtext)
  */
 
-const CARD_VERSION = "1.3.2";
+const CARD_VERSION = "1.3.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1835,11 +1835,11 @@ class PassableApplianceCard extends LitElement {
     let activeOvershootOffset = null;
     if (isOvershootActive) {
       if (hvacAction === "cooling" && coolOvershoot.state && coolOvershoot.state !== "unavailable" && coolOvershoot.state !== "unknown") {
-        activeOvershootOffset = `+${coolOvershoot.state}°⚡`;
+        activeOvershootOffset = `+${coolOvershoot.state}°`;
       } else if (hvacAction === "heating" && heatOvershoot.state && heatOvershoot.state !== "unavailable" && heatOvershoot.state !== "unknown") {
-        activeOvershootOffset = `-${heatOvershoot.state}°⚡`;
+        activeOvershootOffset = `-${heatOvershoot.state}°`;
       } else if (overshootActiveObj.state === "on") {
-        activeOvershootOffset = `⚡`;
+        activeOvershootOffset = `Active`;
       }
     }
 
@@ -1880,10 +1880,7 @@ class PassableApplianceCard extends LitElement {
 
             <div class="hvac-compact-meta">
               <span class="status-chip ${stateClass}">
-                ${isAnimated
-                  ? html`<ha-icon icon="mdi:fan" class="hvac-spin-icon" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>`
-                  : ""}
-                <ha-icon icon="${stateIcon}" style="--mdc-icon-size:11px; margin-right:2px;"></ha-icon>
+                <ha-icon icon="${stateIcon}" class="${stateClass === 'active-fan' ? 'hvac-spin-icon' : isAnimated ? 'hvac-pulse-icon' : ''}" style="--mdc-icon-size:11px; margin-right:3px;"></ha-icon>
                 ${stateLabel}
               </span>
               ${isFilterExpired
@@ -2582,8 +2579,23 @@ class PassableApplianceCard extends LitElement {
         100% { transform: rotate(360deg); }
       }
       .hvac-spin-icon {
-        animation: spin-slow 2s linear infinite;
-        display: inline-block;
+        animation: spin-slow 2.5s linear infinite;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transform-origin: center center;
+      }
+      @keyframes gentle-pulse {
+        0% { opacity: 0.75; transform: scale(0.94); }
+        50% { opacity: 1; transform: scale(1.08); }
+        100% { opacity: 0.75; transform: scale(0.94); }
+      }
+      .hvac-pulse-icon {
+        animation: gentle-pulse 2s ease-in-out infinite;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transform-origin: center center;
       }
 
       @keyframes alert-pulse {
@@ -2840,17 +2852,21 @@ class PassableApplianceCardEditor extends LitElement {
         </summary>
 
         <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
-          <ha-textfield
-            label="System Name"
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ text: {} }}
             .value=${sys.name || ""}
-            @input=${(e) => this._updateHVACSystemConfig(index, "name", e.target.value)}
-          ></ha-textfield>
+            .label=${"Custom System Name (Optional, e.g. Upstairs & Attic)"}
+            @value-changed=${(e) => this._updateHVACSystemConfig(index, "name", e.detail.value)}
+          ></ha-selector>
 
-          <ha-textfield
-            label="System Icon (e.g. mdi:home-floor-2)"
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ text: {} }}
             .value=${sys.icon || "mdi:hvac"}
-            @input=${(e) => this._updateHVACSystemConfig(index, "icon", e.target.value)}
-          ></ha-textfield>
+            .label=${"Custom System Icon (Optional, e.g. mdi:home-floor-2)"}
+            @value-changed=${(e) => this._updateHVACSystemConfig(index, "icon", e.detail.value)}
+          ></ha-selector>
 
           <!-- Primary Local Climate Entity Picker (HomeKit) -->
           <ha-selector
