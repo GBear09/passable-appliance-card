@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.5.3
+ * Version: 1.5.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Dynamic Heat/Cool Entity Switching + Outdoor Temp Overlay & Legend on Today 24h Timeline)
+ *  6. HVAC Systems (Guarded Null Entity Property Access Across All Modal Tabs to Prevent TypeError and Restore Instant Tab Switching)
  */
 
-const CARD_VERSION = "1.5.3";
+const CARD_VERSION = "1.5.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2068,12 +2068,13 @@ class PassableApplianceCard extends LitElement {
     const filterHours = this._getEntity(filterHoursId);
     const filterLife = this._getEntity(filterLifeId);
 
-    const presetModes = climate.attributes.preset_modes || ["home", "away", "sleep", "ECO", "Alt Sleep"];
-    const currentPreset = climate.attributes.preset_mode || "home";
+    const presetModes = (climate && climate.attributes && climate.attributes.preset_modes) || ["home", "away", "sleep", "ECO", "Alt Sleep"];
+    const currentPreset = (climate && climate.attributes && climate.attributes.preset_mode) || "home";
     const isUpstairs = unitKey === "upstairs";
 
-    const isHeatingSeason = climate.state === "heat" || (climate.attributes.hvac_action && climate.attributes.hvac_action === "heating");
+    const isHeatingSeason = climate && (climate.state === "heat" || (climate.attributes && climate.attributes.hvac_action === "heating"));
     const selectedDayIdx = (this._selectedHvacDayIndex !== undefined && this._selectedHvacDayIndex !== null) ? this._selectedHvacDayIndex : 9;
+    const graphMode = this._hvacGraphMode || "multiday";
 
     // Compute 10 consecutive daily records ending on Today (0 to 9 days ago)
     const now = new Date();
@@ -2294,7 +2295,7 @@ class PassableApplianceCard extends LitElement {
                           </div>
                           <div style="display:flex; justify-content:space-between; align-items:center;">
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatThreshId, -0.5)}>-</button>
-                            <span style="font-weight:700; font-size:0.85rem;">${heatThresh.state && heatThresh.state !== "unavailable" ? `${heatThresh.state} °F` : "4 °F"}</span>
+                            <span style="font-weight:700; font-size:0.85rem;">${heatThresh && heatThresh.state && heatThresh.state !== "unavailable" ? `${heatThresh.state} °F` : "4 °F"}</span>
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatThreshId, 0.5)}>+</button>
                           </div>
                         </div>
@@ -2307,7 +2308,7 @@ class PassableApplianceCard extends LitElement {
                           </div>
                           <div style="display:flex; justify-content:space-between; align-items:center;">
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatOvershootId, -0.5)}>-</button>
-                            <span style="font-weight:700; font-size:0.85rem;">${heatOvershoot.state && heatOvershoot.state !== "unavailable" ? `${heatOvershoot.state} °F` : "2 °F"}</span>
+                            <span style="font-weight:700; font-size:0.85rem;">${heatOvershoot && heatOvershoot.state && heatOvershoot.state !== "unavailable" ? `${heatOvershoot.state} °F` : "2 °F"}</span>
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(heatOvershootId, 0.5)}>+</button>
                           </div>
                         </div>
@@ -2328,7 +2329,7 @@ class PassableApplianceCard extends LitElement {
                           </div>
                           <div style="display:flex; justify-content:space-between; align-items:center;">
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolThreshId, -0.5)}>-</button>
-                            <span style="font-weight:700; font-size:0.85rem;">${coolThresh.state && coolThresh.state !== "unavailable" ? `${coolThresh.state} °F` : "5 °F"}</span>
+                            <span style="font-weight:700; font-size:0.85rem;">${coolThresh && coolThresh.state && coolThresh.state !== "unavailable" ? `${coolThresh.state} °F` : "5 °F"}</span>
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolThreshId, 0.5)}>+</button>
                           </div>
                         </div>
@@ -2341,7 +2342,7 @@ class PassableApplianceCard extends LitElement {
                           </div>
                           <div style="display:flex; justify-content:space-between; align-items:center;">
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolOvershootId, -0.5)}>-</button>
-                            <span style="font-weight:700; font-size:0.85rem;">${coolOvershoot.state && coolOvershoot.state !== "unavailable" ? `${coolOvershoot.state} °F` : "1 °F"}</span>
+                            <span style="font-weight:700; font-size:0.85rem;">${coolOvershoot && coolOvershoot.state && coolOvershoot.state !== "unavailable" ? `${coolOvershoot.state} °F` : "1 °F"}</span>
                             <button class="pill-btn" style="width:24px; height:24px; font-size:1rem;" @click=${() => this._adjustNumberEntity(coolOvershootId, 0.5)}>+</button>
                           </div>
                         </div>
@@ -2365,7 +2366,7 @@ class PassableApplianceCard extends LitElement {
                         <span class="control-label">Recirculation Active</span>
                       </div>
                       <ha-switch
-                        .checked=${fanCircActiveObj.state === "on"}
+                        .checked=${fanCircActiveObj && fanCircActiveObj.state === "on"}
                         @change=${() => this._toggleEntity(fanCircActiveId)}
                         class="popup-switch"
                       ></ha-switch>
@@ -2588,7 +2589,7 @@ class PassableApplianceCard extends LitElement {
                         <ha-icon icon="mdi:timer-outline"></ha-icon>
                         <span class="control-label">Filter Life Remaining</span>
                       </div>
-                      <span class="control-value" style="font-weight:700; color:var(--primary-color);">${filterHours.state || 0} hrs</span>
+                      <span class="control-value" style="font-weight:700; color:var(--primary-color);">${(filterHours && filterHours.state) || 0} hrs</span>
                     </div>
 
                     <div class="control-row">
@@ -2598,7 +2599,7 @@ class PassableApplianceCard extends LitElement {
                       </div>
                       <div class="step-controller-pill">
                         <button class="pill-btn" @click=${() => this._adjustFilterLifeAndHours(filterHoursId, filterLifeId, -25)}>-25h</button>
-                        <span class="pill-value">${filterLife.state || 300} hrs</span>
+                        <span class="pill-value">${(filterLife && filterLife.state) || 300} hrs</span>
                         <button class="pill-btn" @click=${() => this._adjustFilterLifeAndHours(filterHoursId, filterLifeId, 25)}>+25h</button>
                       </div>
                     </div>
