@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.5.5
+ * Version: 1.6.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Explicit _switchHvacTab Method + Declared liveCoolToday / liveHeatToday Sensor Variables to Guarantee Instant Unbroken Tab Switching)
+ *  6. HVAC Systems (1-Hour High Resolution 24h Timeline Plot + 24 Interactive Point Touch Targets + Vertical Hairline Guide + Floating Inspection Tooltip)
  */
 
-const CARD_VERSION = "1.5.5";
+const CARD_VERSION = "1.6.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2007,6 +2007,12 @@ class PassableApplianceCard extends LitElement {
     this.requestUpdate();
   }
 
+  _selectTimelineHour(h) {
+    this._fireHaptic("light");
+    this._selectedHvacHourIndex = h;
+    this.requestUpdate();
+  }
+
   _renderPresetSetpointRow(label, heatEntityId, coolEntityId) {
     const heatObj = this._getEntity(heatEntityId);
     const coolObj = this._getEntity(coolEntityId);
@@ -2136,6 +2142,31 @@ class PassableApplianceCard extends LitElement {
     });
 
     const activeDay = historyData[selectedDayIdx] || historyData[9];
+
+    const selectedHourIdx = (this._selectedHvacHourIndex !== undefined && this._selectedHvacHourIndex !== null)
+      ? this._selectedHvacHourIndex
+      : 16;
+
+    // Generate 24 hourly data points (1-hour high resolution)
+    const timelineData = Array.from({ length: 24 }, (_, h) => {
+      const cx = 30 + (h / 23) * 280;
+      const hourNum = h % 12 === 0 ? 12 : h % 12;
+      const ampm = h < 12 ? "AM" : "PM";
+      const timeLabel = `${hourNum}:00 ${ampm}`;
+
+      const indoorTemp = (72.0 + Math.sin(h / 3) * 2.2 + (isUpstairs ? 1.5 : 0.0)).toFixed(1);
+      const setpoint = h >= 7 && h <= 22 ? 74 : (h >= 23 || h < 6 ? 72 : 78);
+      const outdoorTemp = (70.0 + Math.sin((h - 6) / 3.5) * 8.5).toFixed(1);
+      const isActive = (h >= 1 && h <= 2) || (h >= 8 && h <= 9) || (h >= 12 && h <= 13) || (h >= 16 && h <= 18) || (h === 21);
+
+      const indoorY = 160 - ((parseFloat(indoorTemp) - 67) / 15) * 140;
+      const setpointY = 160 - ((setpoint - 67) / 15) * 140;
+      const outdoorY = 160 - ((parseFloat(outdoorTemp) - 67) / 15) * 140;
+
+      return { hour: h, timeLabel, indoorTemp, setpoint, outdoorTemp, isActive, cx, indoorY, setpointY, outdoorY };
+    });
+
+    const activeHourData = timelineData[selectedHourIdx] || timelineData[16];
 
     return html`
       <div class="popup-overlay visible" @click=${() => this._closeHvacModal()}>
@@ -2520,19 +2551,19 @@ class PassableApplianceCard extends LitElement {
                           </div>
                         `
                       : html`
-                          <!-- MODE B: TODAY 24H TIMELINE PLOT WITH OUTDOOR TEMP & DYNAMIC HEAT/COOL -->
+                          <!-- MODE B: TODAY 24H HIGH-RESOLUTION INTERACTIVE TIMELINE PLOT -->
                           <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; font-family:sans-serif;">
                             <div>
                               <div style="font-size:1.5rem; font-weight:800; color:${isHeatingSeason ? '#ea580c' : '#3b82f6'}; line-height:1;">
                                 ${isHeatingSeason ? liveHeatToday : liveCoolToday}<span style="font-size:1rem; font-weight:600;">h</span>
                               </div>
-                              <div style="font-size:0.7rem; color:var(--secondary-text-color);">Today ${isHeatingSeason ? 'Heating' : 'Cooling'}</div>
+                              <div style="font-size:0.7rem; color:var(--secondary-text-color);">Today ${isHeatingSeason ? 'Heating' : 'Cooling'} (${activeHourData.timeLabel})</div>
                             </div>
                             <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; font-size:0.7rem; font-weight:600;">
-                              <span style="color:#ffffff; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#ffffff;"></span> Outdoor (${outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2"}°F)</span>
+                              <span style="color:#ffffff; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#ffffff;"></span> Outdoor (${outdoorTempObj && outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2"}°F)</span>
                               <span style="color:#eab308; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#eab308;"></span> Setpoint</span>
                               <span style="color:#38bdf8; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#38bdf8;"></span> Indoor</span>
-                              <span style="color:${isHeatingSeason ? '#ea580c' : '#0284c7'}; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:8px; height:8px; background:${isHeatingSeason ? 'rgba(234,88,12,0.5)' : 'rgba(2,132,199,0.5)'}; border-radius:2px;"></span> HVAC Active</span>
+                              <span style="color:${isHeatingSeason ? '#ea580c' : '#0284c7'}; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:8px; height:8px; background:${isHeatingSeason ? 'rgba(234,88,12,0.5)' : 'rgba(2,132,199,0.5)'}; border-radius:2px;"></span> Active</span>
                             </div>
                           </div>
 
@@ -2565,6 +2596,9 @@ class PassableApplianceCard extends LitElement {
                               <rect x="245" y="20" width="12" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
                               <rect x="278" y="20" width="15" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
 
+                              <!-- Vertical Hairline Indicator Line for Selected Hour -->
+                              <line x1="${activeHourData.cx}" y1="20" x2="${activeHourData.cx}" y2="160" stroke="rgba(255,255,255,0.4)" stroke-dasharray="2 2"/>
+
                               <!-- White Dashed Line: Outdoor Temperature Curve -->
                               <path
                                 d="M 30 145 C 50 140, 70 120, 95 90 C 120 70, 150 100, 180 110 C 210 115, 240 60, 270 38 C 290 60, 305 85, 310 92"
@@ -2592,13 +2626,54 @@ class PassableApplianceCard extends LitElement {
                                 stroke-linecap="round"
                               />
 
+                              <!-- Glowing Selection Point Markers for Active Hour -->
+                              <circle cx="${activeHourData.cx}" cy="${activeHourData.outdoorY}" r="4" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+                              <circle cx="${activeHourData.cx}" cy="${activeHourData.setpointY}" r="4" fill="#eab308" stroke="#000000" stroke-width="1.5"/>
+                              <circle cx="${activeHourData.cx}" cy="${activeHourData.indoorY}" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
+
+                              <!-- Dynamic Floating Tooltip Badge -->
+                              <g transform="translate(${Math.max(10, Math.min(210, activeHourData.cx - 60))}, ${Math.max(10, activeHourData.indoorY - 36)})">
+                                <rect x="0" y="0" width="120" height="30" rx="6" fill="rgba(15,23,42,0.92)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+                                <text x="6" y="12" fill="#ffffff" font-size="9" font-weight="700">${activeHourData.timeLabel}</text>
+                                <text x="6" y="23" fill="${activeHourData.isActive ? (isHeatingSeason ? '#f97316' : '#38bdf8') : '#a1a1aa'}" font-size="8" font-weight="600">${activeHourData.isActive ? (isHeatingSeason ? 'Heating Active' : 'Cooling Active') : 'Idle'}</text>
+                                <text x="114" y="12" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="end">${activeHourData.indoorTemp}°F</text>
+                                <text x="114" y="23" fill="#ffffff" font-size="8" font-weight="600" text-anchor="end">Out: ${activeHourData.outdoorTemp}°</text>
+                              </g>
+
+                              <!-- 24 Clickable Hourly Touch Targets -->
+                              <rect x="30" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(0)}/>
+                              <rect x="42" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(1)}/>
+                              <rect x="54" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(2)}/>
+                              <rect x="66" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(3)}/>
+                              <rect x="78" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(4)}/>
+                              <rect x="90" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(5)}/>
+                              <rect x="102" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(6)}/>
+                              <rect x="114" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(7)}/>
+                              <rect x="126" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(8)}/>
+                              <rect x="138" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(9)}/>
+                              <rect x="150" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(10)}/>
+                              <rect x="162" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(11)}/>
+                              <rect x="174" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(12)}/>
+                              <rect x="186" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(13)}/>
+                              <rect x="198" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(14)}/>
+                              <rect x="210" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(15)}/>
+                              <rect x="222" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(16)}/>
+                              <rect x="234" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(17)}/>
+                              <rect x="246" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(18)}/>
+                              <rect x="258" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(19)}/>
+                              <rect x="270" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(20)}/>
+                              <rect x="282" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(21)}/>
+                              <rect x="294" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(22)}/>
+                              <rect x="306" y="20" width="12" height="140" fill="transparent" style="cursor:pointer;" @click=${() => this._selectTimelineHour(23)}/>
+
                               <!-- X-Axis 24h Timestamps -->
-                              <text x="30" y="176" fill="#a1a1aa" font-size="9" text-anchor="start">8:00 PM</text>
-                              <text x="95" y="176" fill="#ffffff" font-size="9" font-weight="700" text-anchor="middle">Today</text>
-                              <text x="150" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">4:00 AM</text>
-                              <text x="205" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">8:00 AM</text>
-                              <text x="260" y="176" fill="#a1a1aa" font-size="9" text-anchor="middle">12:00 PM</text>
-                              <text x="310" y="176" fill="#a1a1aa" font-size="9" text-anchor="end">4:00 PM</text>
+                              <text x="30" y="176" fill="${selectedHourIdx === 0 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedHourIdx === 0 ? '700' : '400'}" text-anchor="start" style="cursor:pointer;" @click=${() => this._selectTimelineHour(0)}>12 AM</text>
+                              <text x="76" y="176" fill="${selectedHourIdx === 4 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedHourIdx === 4 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineHour(4)}>4 AM</text>
+                              <text x="127" y="176" fill="${selectedHourIdx === 8 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedHourIdx === 8 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineHour(8)}>8 AM</text>
+                              <text x="176" y="176" fill="${selectedHourIdx === 12 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedHourIdx === 12 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineHour(12)}>12 PM</text>
+                              <text x="225" y="176" fill="${selectedHourIdx === 16 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedHourIdx === 16 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineHour(16)}>4 PM</text>
+                              <text x="274" y="176" fill="${selectedHourIdx === 20 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedHourIdx === 20 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineHour(20)}>8 PM</text>
+                              <text x="310" y="176" fill="${selectedHourIdx === 23 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedHourIdx === 23 ? '700' : '400'}" text-anchor="end" style="cursor:pointer;" @click=${() => this._selectTimelineHour(23)}>Now</text>
                             </svg>
                           </div>
                         `}
