@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.2
+ * Version: 1.8.3
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Auto-Resolve Real HA Entity IDs climate.upstairs/climate.downstairs + Preserve History Attributes + Full Drag/Click Touch Pointer Event Controls)
+ *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.8.2";
+const CARD_VERSION = "1.8.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1978,16 +1978,28 @@ class PassableApplianceCard extends LitElement {
         let climateHistory = [];
         let outdoorHistory = [];
 
-        historyRes.forEach(entityArr => {
+        historyRes.forEach((entityArr, arrIdx) => {
           if (Array.isArray(entityArr) && entityArr.length > 0) {
-            const entId = entityArr[0].entity_id;
-            if (entId === climateId) {
+            const entId = entityArr[0].entity_id || entities[arrIdx];
+            if (entId === climateId || arrIdx === 0) {
               climateHistory = entityArr;
-            } else if (entId === outdoorTempId) {
+            } else if (entId === outdoorTempId || arrIdx === 1) {
               outdoorHistory = entityArr;
             }
           }
         });
+
+        const sortByTime = (arr) => {
+          if (!Array.isArray(arr)) return [];
+          return arr.slice().sort((a, b) => {
+            const tA = new Date(a.last_updated || a.last_changed || 0).getTime();
+            const tB = new Date(b.last_updated || b.last_changed || 0).getTime();
+            return tA - tB;
+          });
+        };
+
+        climateHistory = sortByTime(climateHistory);
+        outdoorHistory = sortByTime(outdoorHistory);
 
         this._hvacHistoryCache[unitKey] = {
           fetchedAt: Date.now(),
@@ -2226,6 +2238,18 @@ class PassableApplianceCard extends LitElement {
     const selectedDayIdx = (this._selectedHvacDayIndex !== undefined && this._selectedHvacDayIndex !== null) ? this._selectedHvacDayIndex : 9;
     const graphMode = this._hvacGraphMode || "multiday";
 
+    const getOutdoorTempNum = (obj) => {
+      if (!obj) return 78.2;
+      if (obj.attributes && obj.attributes.temperature !== undefined && obj.attributes.temperature !== null) {
+        return parseFloat(obj.attributes.temperature);
+      }
+      if (obj.state && !isNaN(parseFloat(obj.state))) {
+        return parseFloat(obj.state);
+      }
+      return 78.2;
+    };
+    const liveOutdoorTempStr = getOutdoorTempNum(outdoorTempObj).toFixed(1);
+
     // Compute 10 consecutive daily records ending on Today (0 to 9 days ago)
     const now = new Date();
     const historyData = Array.from({ length: 10 }, (_, i) => {
@@ -2241,7 +2265,7 @@ class PassableApplianceCard extends LitElement {
 
       if (isUpstairs) {
         const upstairsCool = [1.2, 2.0, 4.2, 5.0, 3.5, 3.1, 2.4, 5.2, 5.8, liveCoolToday];
-        const upstairsTemps = ["71.8", "74.2", "78.6", "81.2", "76.5", "75.0", "73.8", "83.1", "85.4", (outdoorTempObj && outdoorTempObj.state && outdoorTempObj.state !== "unavailable") ? outdoorTempObj.state : "78.2"];
+        const upstairsTemps = ["71.8", "74.2", "78.6", "81.2", "76.5", "75.0", "73.8", "83.1", "85.4", liveOutdoorTempStr];
         const upstairsCY = [145, 122, 90, 75, 105, 110, 118, 55, 38, 92];
         cool = upstairsCool[i];
         heat = daysAgo === 0 ? liveHeatToday : (isHeatingSeason ? (6.0 - cool * 0.5).toFixed(1) : 0.0);
@@ -2249,7 +2273,7 @@ class PassableApplianceCard extends LitElement {
         cy = upstairsCY[i];
       } else {
         const downstairsCool = [0.8, 1.4, 3.4, 3.0, 2.6, 2.5, 2.0, 4.8, 5.2, liveCoolToday];
-        const downstairsTemps = ["70.1", "72.5", "74.2", "76.0", "73.2", "72.8", "71.5", "79.4", "81.0", (outdoorTempObj && outdoorTempObj.state && outdoorTempObj.state !== "unavailable") ? outdoorTempObj.state : "74.2"];
+        const downstairsTemps = ["70.1", "72.5", "74.2", "76.0", "73.2", "72.8", "71.5", "79.4", "81.0", liveOutdoorTempStr];
         const downstairsCY = [150, 130, 108, 95, 120, 122, 128, 75, 60, 115];
         cool = downstairsCool[i];
         heat = daysAgo === 0 ? liveHeatToday : (isHeatingSeason ? (5.0 - cool * 0.4).toFixed(1) : 0.0);
@@ -2846,7 +2870,7 @@ class PassableApplianceCard extends LitElement {
                               <div style="font-size:0.7rem; color:var(--secondary-text-color);">Today ${isHeatingSeason ? 'Heating' : 'Cooling'} (${activeHourData.timeLabel})</div>
                             </div>
                             <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; font-size:0.7rem; font-weight:600;">
-                              <span style="color:#ffffff; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#ffffff;"></span> Outdoor (${outdoorTempObj && outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2"}°F)</span>
+                              <span style="color:#ffffff; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#ffffff;"></span> Outdoor (${liveOutdoorTempStr}°F)</span>
                               <span style="color:#eab308; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#eab308;"></span> Setpoint</span>
                               <span style="color:#38bdf8; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#38bdf8;"></span> Indoor</span>
                               <span style="color:${isHeatingSeason ? '#ea580c' : '#0284c7'}; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:8px; height:8px; background:${isHeatingSeason ? 'rgba(234,88,12,0.5)' : 'rgba(2,132,199,0.5)'}; border-radius:2px;"></span> Active</span>
