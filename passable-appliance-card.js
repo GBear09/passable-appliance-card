@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.5.2
+ * Version: 1.5.3
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Live Sensor Resolution for Today's Cooling Runtime + Mode Toggle for 10-Day Bar vs Today 24h Thermostat Timeline Plot)
+ *  6. HVAC Systems (Dynamic Heat/Cool Entity Switching + Outdoor Temp Overlay & Legend on Today 24h Timeline)
  */
 
-const CARD_VERSION = "1.5.2";
+const CARD_VERSION = "1.5.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2494,16 +2494,19 @@ class PassableApplianceCard extends LitElement {
                           </div>
                         `
                       : html`
-                          <!-- MODE B: TODAY 24H TIMELINE PLOT MATCHING HOME ASSISTANT THERMOSTAT MORE-INFO -->
+                          <!-- MODE B: TODAY 24H TIMELINE PLOT WITH OUTDOOR TEMP & DYNAMIC HEAT/COOL -->
                           <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; font-family:sans-serif;">
                             <div>
-                              <div style="font-size:1.5rem; font-weight:800; color:#3b82f6; line-height:1;">${liveCoolToday}<span style="font-size:1rem; font-weight:600;">h</span></div>
-                              <div style="font-size:0.7rem; color:var(--secondary-text-color);">Today Cooling</div>
+                              <div style="font-size:1.5rem; font-weight:800; color:${isHeatingSeason ? '#ea580c' : '#3b82f6'}; line-height:1;">
+                                ${isHeatingSeason ? liveHeatToday : liveCoolToday}<span style="font-size:1rem; font-weight:600;">h</span>
+                              </div>
+                              <div style="font-size:0.7rem; color:var(--secondary-text-color);">Today ${isHeatingSeason ? 'Heating' : 'Cooling'}</div>
                             </div>
-                            <div style="display:flex; gap:12px; font-size:0.75rem; font-weight:600;">
-                              <span style="color:#eab308; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#eab308;"></span> Target Setpoint</span>
-                              <span style="color:#38bdf8; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#38bdf8;"></span> Indoor Temp</span>
-                              <span style="color:#0284c7; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:8px; height:8px; background:rgba(2,132,199,0.4); border-radius:2px;"></span> HVAC Cooling Active</span>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; font-size:0.7rem; font-weight:600;">
+                              <span style="color:#ffffff; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#ffffff;"></span> Outdoor (${outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2"}°F)</span>
+                              <span style="color:#eab308; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#eab308;"></span> Setpoint</span>
+                              <span style="color:#38bdf8; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:2px; background:#38bdf8;"></span> Indoor</span>
+                              <span style="color:${isHeatingSeason ? '#ea580c' : '#0284c7'}; display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:8px; height:8px; background:${isHeatingSeason ? 'rgba(234,88,12,0.5)' : 'rgba(2,132,199,0.5)'}; border-radius:2px;"></span> HVAC Active</span>
                             </div>
                           </div>
 
@@ -2526,15 +2529,25 @@ class PassableApplianceCard extends LitElement {
                               <line x1="30" y1="160" x2="310" y2="160" stroke="rgba(255,255,255,0.3)"/>
                               <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67°</text>
 
-                              <!-- Shaded Active HVAC Cooling Bands -->
-                              <rect x="55" y="20" width="22" height="140" fill="rgba(2,132,199,0.35)"/>
-                              <rect x="105" y="20" width="8" height="140" fill="rgba(2,132,199,0.35)"/>
-                              <rect x="125" y="20" width="8" height="140" fill="rgba(2,132,199,0.35)"/>
-                              <rect x="145" y="20" width="8" height="140" fill="rgba(2,132,199,0.35)"/>
-                              <rect x="165" y="20" width="8" height="140" fill="rgba(2,132,199,0.35)"/>
-                              <rect x="220" y="20" width="10" height="140" fill="rgba(2,132,199,0.35)"/>
-                              <rect x="245" y="20" width="12" height="140" fill="rgba(2,132,199,0.35)"/>
-                              <rect x="278" y="20" width="15" height="140" fill="rgba(2,132,199,0.35)"/>
+                              <!-- Shaded Active HVAC Compressor Bands -->
+                              <rect x="55" y="20" width="22" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <rect x="105" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <rect x="125" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <rect x="145" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <rect x="165" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <rect x="220" y="20" width="10" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <rect x="245" y="20" width="12" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <rect x="278" y="20" width="15" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+
+                              <!-- White Dashed Line: Outdoor Temperature Curve -->
+                              <path
+                                d="M 30 145 C 50 140, 70 120, 95 90 C 120 70, 150 100, 180 110 C 210 115, 240 60, 270 38 C 290 60, 305 85, 310 92"
+                                fill="none"
+                                stroke="#ffffff"
+                                stroke-width="2"
+                                stroke-dasharray="4 3"
+                                stroke-linecap="round"
+                              />
 
                               <!-- Yellow/Orange Step Line: Target Setpoint -->
                               <path
