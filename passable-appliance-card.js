@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.7.0
+ * Version: 1.8.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Dynamic Autofit Y-Axis Temperature Range Bounds + User Selectable Resolution Picker for 1m, 5m, 15m, 30m, 1h Data Granularity)
+ *  6. HVAC Systems (100% Real Home Assistant Recorder History API Data + Rolling 24h Window to NOW + Dynamic Compressor Active Bands)
  */
 
-const CARD_VERSION = "1.7.0";
+const CARD_VERSION = "1.8.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1950,6 +1950,61 @@ class PassableApplianceCard extends LitElement {
     this.requestUpdate();
   }
 
+  async _fetchHvacHistoryData(unitKey, climateId, outdoorTempId) {
+    if (!this.hass || !climateId) return;
+
+    if (
+      this._hvacHistoryCache &&
+      this._hvacHistoryCache[unitKey] &&
+      Date.now() - this._hvacHistoryCache[unitKey].fetchedAt < 30000
+    ) {
+      return;
+    }
+
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - 24 * 3600 * 1000);
+    const startIso = startTime.toISOString();
+    const endIso = endTime.toISOString();
+
+    const entities = [climateId, outdoorTempId].filter(Boolean);
+    const filterStr = entities.join(",");
+    const endpoint = `history/period/${startIso}?filter_entity_id=${filterStr}&end_time=${endIso}&minimal_response&no_attributes=false`;
+
+    try {
+      const historyRes = await this.hass.callApi("GET", endpoint);
+      if (historyRes && Array.isArray(historyRes)) {
+        if (!this._hvacHistoryCache) this._hvacHistoryCache = {};
+
+        let climateHistory = [];
+        let outdoorHistory = [];
+
+        historyRes.forEach(entityArr => {
+          if (Array.isArray(entityArr) && entityArr.length > 0) {
+            const entId = entityArr[0].entity_id;
+            if (entId === climateId) {
+              climateHistory = entityArr;
+            } else if (entId === outdoorTempId) {
+              outdoorHistory = entityArr;
+            }
+          }
+        });
+
+        this._hvacHistoryCache[unitKey] = {
+          fetchedAt: Date.now(),
+          startTime: startTime.getTime(),
+          endTime: endTime.getTime(),
+          climateId,
+          outdoorTempId,
+          climateHistory,
+          outdoorHistory
+        };
+        this.requestUpdate();
+      }
+    } catch (e) {
+      console.warn("Home Assistant History API warning:", e);
+    }
+  }
+
   _closeHvacModal() {
     this._fireHaptic("light");
     this._activeHvacTab = null;
@@ -2654,15 +2709,18 @@ class PassableApplianceCard extends LitElement {
                               <line x1="30" y1="160" x2="310" y2="160" stroke="rgba(255,255,255,0.3)"/>
                               <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.bottom}</text>
 
-                              <!-- Shaded Active HVAC Compressor Bands -->
-                              <rect x="55" y="20" width="22" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
-                              <rect x="105" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
-                              <rect x="125" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
-                              <rect x="145" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
-                              <rect x="165" y="20" width="8" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
-                              <rect x="220" y="20" width="10" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
-                              <rect x="245" y="20" width="12" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
-                              <rect x="278" y="20" width="15" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
+                              <!-- Shaded Active HVAC Compressor Bands (Real HA History Data) -->
+                              ${activeBands.map(
+                                (b) => html`
+                                  <rect
+                                    x="${b.x}"
+                                    y="20"
+                                    width="${b.width}"
+                                    height="140"
+                                    fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"
+                                  />
+                                `
+                              )}
 
                               <!-- Vertical Hairline Indicator Line for Selected Hour -->
                               <line x1="${activeHourData.cx}" y1="20" x2="${activeHourData.cx}" y2="160" stroke="rgba(255,255,255,0.4)" stroke-dasharray="2 2"/>
@@ -2708,13 +2766,13 @@ class PassableApplianceCard extends LitElement {
                                 <text x="114" y="23" fill="#ffffff" font-size="8" font-weight="600" text-anchor="end">Out: ${activeHourData.outdoorTemp}°</text>
                               </g>
 
-                              <!-- 96 Interactive 15-Minute Clickable Touch Targets -->
+                              <!-- Interactive Resolution Touch Targets -->
                               ${timelineData.map(
                                 (pt) => html`
                                   <rect
-                                    x="${pt.cx - 1.5}"
+                                    x="${pt.cx - (280 / Math.max(1, timelineData.length - 1)) / 2}"
                                     y="20"
-                                    width="3"
+                                    width="${Math.max(3, 280 / Math.max(1, timelineData.length - 1))}"
                                     height="140"
                                     fill="transparent"
                                     style="cursor:pointer;"
@@ -2723,14 +2781,23 @@ class PassableApplianceCard extends LitElement {
                                 `
                               )}
 
-                              <!-- X-Axis 24h Timestamps -->
-                              <text x="30" y="176" fill="${selectedChunkIdx === 0 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedChunkIdx === 0 ? '700' : '400'}" text-anchor="start" style="cursor:pointer;" @click=${() => this._selectTimelineChunk(0)}>12 AM</text>
-                              <text x="76" y="176" fill="${selectedChunkIdx === 16 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedChunkIdx === 16 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineChunk(16)}>4 AM</text>
-                              <text x="127" y="176" fill="${selectedChunkIdx === 32 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedChunkIdx === 32 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineChunk(32)}>8 AM</text>
-                              <text x="176" y="176" fill="${selectedChunkIdx === 48 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedChunkIdx === 48 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineChunk(48)}>12 PM</text>
-                              <text x="225" y="176" fill="${selectedChunkIdx === 64 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedChunkIdx === 64 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineChunk(64)}>4 PM</text>
-                              <text x="274" y="176" fill="${selectedChunkIdx === 80 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedChunkIdx === 80 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectTimelineChunk(80)}>8 PM</text>
-                              <text x="310" y="176" fill="${selectedChunkIdx === 95 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedChunkIdx === 95 ? '700' : '400'}" text-anchor="end" style="cursor:pointer;" @click=${() => this._selectTimelineChunk(95)}>Now</text>
+                              <!-- X-Axis Dynamic 24h Timestamps -->
+                              ${xLabels.map(
+                                (xl) => html`
+                                  <text
+                                    x="${xl.cx}"
+                                    y="176"
+                                    fill="${selectedChunkIdx === xl.idx ? '#ffffff' : '#a1a1aa'}"
+                                    font-size="8"
+                                    font-weight="${selectedChunkIdx === xl.idx ? '700' : '400'}"
+                                    text-anchor="middle"
+                                    style="cursor:pointer;"
+                                    @click=${() => this._selectTimelineChunk(xl.idx)}
+                                  >
+                                    ${xl.timeLabel}
+                                  </text>
+                                `
+                              )}
                             </svg>
                           </div>
                         `}
