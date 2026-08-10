@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.3
+ * Version: 1.8.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.8.3";
+const CARD_VERSION = "1.8.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
