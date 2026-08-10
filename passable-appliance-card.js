@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.6
+ * Version: 1.8.7
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.8.6";
+const CARD_VERSION = "1.8.7";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2472,8 +2472,23 @@ class PassableApplianceCard extends LitElement {
           } else if (attrs.target_temp_high !== undefined && attrs.target_temp_high !== null) {
             setpoint = parseFloat(attrs.target_temp_high);
           }
-          const act = attrs.hvac_action || cState.state;
-          isActive = act === "cooling" || act === "heating" || act === "cool" || act === "heat";
+          const act = (attrs.hvac_action || "").toLowerCase();
+          const st = (cState.state || "").toLowerCase();
+
+          if (act === "cooling" || act === "heating") {
+            isActive = true;
+          } else if (act === "idle" || act === "off") {
+            isActive = false;
+          } else {
+            // Fallback when hvac_action is not explicitly provided in recorder attributes
+            if (st === "cool" || st === "cooling") {
+              isActive = parseFloat(indoorTemp) > (parseFloat(setpoint) + 0.1);
+            } else if (st === "heat" || st === "heating") {
+              isActive = parseFloat(indoorTemp) < (parseFloat(setpoint) - 0.1);
+            } else if (st === "auto" || st === "heat_cool") {
+              isActive = parseFloat(indoorTemp) > (parseFloat(setpoint) + 0.1) || parseFloat(indoorTemp) < (parseFloat(setpoint) - 0.1);
+            }
+          }
         }
       }
 
@@ -2489,7 +2504,7 @@ class PassableApplianceCard extends LitElement {
         }
       }
 
-      return { idx, pointTimeMs, timeLabel, indoorTemp: parseFloat(indoorTemp).toFixed(1), setpoint: parseFloat(setpoint), outdoorTemp: parseFloat(outdoorTemp).toFixed(1), isActive, cx };
+      return { idx, pointTimeMs, timeLabel, indoorTemp: parseFloat(indoorTemp).toFixed(1), setpoint: parseFloat(setpoint).toFixed(1), outdoorTemp: parseFloat(outdoorTemp).toFixed(1), isActive, cx };
     });
 
     // DYNAMIC AUTOFIT Y-AXIS BOUNDS CALCULATION
@@ -2517,6 +2532,24 @@ class PassableApplianceCard extends LitElement {
     }));
 
     const activeHourData = timelineData[selectedChunkIdx] || timelineData[timelineData.length - 1];
+
+    // Smart non-blocking tooltip position calculation
+    const ttWidth = 126;
+    const ttHeight = 44;
+    let ttX = activeHourData.cx > 170 ? activeHourData.cx - ttWidth - 10 : activeHourData.cx + 10;
+    ttX = Math.max(10, Math.min(340 - ttWidth - 10, ttX));
+
+    const minLineY = Math.min(activeHourData.indoorY, activeHourData.setpointY, activeHourData.outdoorY);
+    const maxLineY = Math.max(activeHourData.indoorY, activeHourData.setpointY, activeHourData.outdoorY);
+
+    let ttY;
+    if (minLineY > 64) {
+      ttY = Math.max(10, minLineY - ttHeight - 6);
+    } else if (maxLineY < 116) {
+      ttY = Math.min(160 - ttHeight, maxLineY + 10);
+    } else {
+      ttY = activeHourData.indoorY > 90 ? 15 : 108;
+    }
 
     // Dynamic Y-axis labels
     const yGridLabels = {
@@ -3056,13 +3089,18 @@ class PassableApplianceCard extends LitElement {
                               <circle cx="${activeHourData.cx}" cy="${activeHourData.setpointY}" r="4" fill="#eab308" stroke="#000000" stroke-width="1.5"/>
                               <circle cx="${activeHourData.cx}" cy="${activeHourData.indoorY}" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
 
-                              <!-- Dynamic Floating Tooltip Badge -->
-                              <g transform="translate(${Math.max(10, Math.min(210, activeHourData.cx - 60))}, ${Math.max(10, activeHourData.indoorY - 36)})">
-                                <rect x="0" y="0" width="120" height="30" rx="6" fill="rgba(15,23,42,0.92)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
-                                <text x="6" y="12" fill="#ffffff" font-size="9" font-weight="700">${activeHourData.timeLabel}</text>
-                                <text x="6" y="23" fill="${activeHourData.isActive ? (isHeatingSeason ? '#f97316' : '#38bdf8') : '#a1a1aa'}" font-size="8" font-weight="600">${activeHourData.isActive ? (isHeatingSeason ? 'Heating Active' : 'Cooling Active') : 'Idle'}</text>
-                                <text x="114" y="12" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="end">${activeHourData.indoorTemp}°F</text>
-                                <text x="114" y="23" fill="#ffffff" font-size="8" font-weight="600" text-anchor="end">Out: ${activeHourData.outdoorTemp}°</text>
+                              <!-- Dynamic Smart Non-Blocking Tooltip Annotation Badge -->
+                              <g transform="translate(${ttX}, ${ttY})">
+                                <rect x="0" y="0" width="126" height="44" rx="6" fill="rgba(15,23,42,0.95)" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
+                                <text x="7" y="13" fill="#ffffff" font-size="9" font-weight="700">${activeHourData.timeLabel}</text>
+                                <text x="119" y="13" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="end">In: ${activeHourData.indoorTemp}°F</text>
+                                
+                                <text x="7" y="26" fill="${activeHourData.isActive ? (isHeatingSeason ? '#f97316' : '#38bdf8') : '#a1a1aa'}" font-size="8" font-weight="600">
+                                  ${activeHourData.isActive ? (isHeatingSeason ? 'Heating Active' : 'Cooling Active') : 'Idle'}
+                                </text>
+                                <text x="119" y="26" fill="#eab308" font-size="8.5" font-weight="800" text-anchor="end">Set: ${activeHourData.setpoint}°F</text>
+                                
+                                <text x="7" y="38" fill="#a1a1aa" font-size="8" font-weight="500">Out: ${activeHourData.outdoorTemp}°F</text>
                               </g>
 
                               <!-- Interactive Resolution Touch Targets -->
