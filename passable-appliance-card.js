@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.7
+ * Version: 1.8.8
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.8.7";
+const CARD_VERSION = "1.8.8";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2563,21 +2563,31 @@ class PassableApplianceCard extends LitElement {
     // Compute active compressor bands dynamically from real HA recorder history
     let activeBands = [];
     let currentBandStart = null;
+    let currentBandEnd = null;
+
+    const chunkWidth = totalChunks > 1 ? (280 / (totalChunks - 1)) : 10;
 
     timelineData.forEach((pt) => {
-      if (pt.isActive && currentBandStart === null) {
-        currentBandStart = pt.cx;
-      } else if (!pt.isActive && currentBandStart !== null) {
-        const bandWidth = Math.max(2, pt.cx - currentBandStart);
-        activeBands.push({ x: currentBandStart, width: bandWidth });
-        currentBandStart = null;
+      if (pt.isActive) {
+        const xStart = Math.max(30, pt.cx - chunkWidth / 2);
+        const xEnd = Math.min(310, pt.cx + chunkWidth / 2);
+        if (currentBandStart === null) {
+          currentBandStart = xStart;
+          currentBandEnd = xEnd;
+        } else {
+          currentBandEnd = xEnd;
+        }
+      } else {
+        if (currentBandStart !== null) {
+          activeBands.push({ x: currentBandStart, width: Math.max(3, currentBandEnd - currentBandStart) });
+          currentBandStart = null;
+          currentBandEnd = null;
+        }
       }
     });
 
     if (currentBandStart !== null) {
-      const lastPt = timelineData[timelineData.length - 1];
-      const bandWidth = Math.max(2, lastPt.cx - currentBandStart);
-      activeBands.push({ x: currentBandStart, width: bandWidth });
+      activeBands.push({ x: currentBandStart, width: Math.max(3, currentBandEnd - currentBandStart) });
     }
 
     const activeBandsPath = activeBands.map(b => 
@@ -3045,14 +3055,10 @@ class PassableApplianceCard extends LitElement {
                               <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.bottom}</text>
 
                               <!-- Shaded Active HVAC Compressor Bands (Real HA History Data) -->
-                              ${activeBandsPath
-                                ? html`
-                                    <path
-                                      d="${activeBandsPath}"
-                                      fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"
-                                    />
-                                  `
-                                : ""}
+                              <path
+                                d="${activeBandsPath}"
+                                fill="${isHeatingSeason ? 'rgba(249,115,22,0.30)' : 'rgba(56,189,248,0.30)'}"
+                              />
 
                               <!-- Vertical Hairline Indicator Line for Selected Hour -->
                               <line x1="${activeHourData.cx}" y1="20" x2="${activeHourData.cx}" y2="160" stroke="rgba(255,255,255,0.4)" stroke-dasharray="2 2"/>
