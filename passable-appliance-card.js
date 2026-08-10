@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.5.4
+ * Version: 1.5.5
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Guarded Null Entity Property Access Across All Modal Tabs to Prevent TypeError and Restore Instant Tab Switching)
+ *  6. HVAC Systems (Explicit _switchHvacTab Method + Declared liveCoolToday / liveHeatToday Sensor Variables to Guarantee Instant Unbroken Tab Switching)
  */
 
-const CARD_VERSION = "1.5.4";
+const CARD_VERSION = "1.5.5";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1941,9 +1941,20 @@ class PassableApplianceCard extends LitElement {
     this.requestUpdate();
   }
 
+  _switchHvacTab(tabName) {
+    this._fireHaptic("light");
+    this._activeHvacTab = tabName;
+    if (this._hvacModal) {
+      this._hvacModal.type = tabName;
+    }
+    this.requestUpdate();
+  }
+
   _closeHvacModal() {
     this._fireHaptic("light");
+    this._activeHvacTab = null;
     this._hvacModal = null;
+    this.requestUpdate();
   }
 
   _setHvacMode(climateEntity, mode) {
@@ -2068,6 +2079,20 @@ class PassableApplianceCard extends LitElement {
     const filterHours = this._getEntity(filterHoursId);
     const filterLife = this._getEntity(filterLifeId);
 
+    const coolTodaySensorId = sysConfig.cool_today || c[`${unitKey}_cool_today`] || `sensor.hvac_${unitKey}_cooling_today`;
+    const heatTodaySensorId = sysConfig.heat_today || c[`${unitKey}_heat_today`] || `sensor.hvac_${unitKey}_heating_today`;
+
+    const coolTodayObj = this._getEntity(coolTodaySensorId) || this._getEntity(`sensor.hvac_${unitKey}_cooling_runtime_today`);
+    const heatTodayObj = this._getEntity(heatTodaySensorId) || this._getEntity(`sensor.hvac_${unitKey}_heating_runtime_today`);
+
+    const liveCoolToday = (coolTodayObj && coolTodayObj.state && !isNaN(parseFloat(coolTodayObj.state)))
+      ? parseFloat(parseFloat(coolTodayObj.state).toFixed(1))
+      : (unitKey === "upstairs" ? 4.8 : 5.5);
+
+    const liveHeatToday = (heatTodayObj && heatTodayObj.state && !isNaN(parseFloat(heatTodayObj.state)))
+      ? parseFloat(parseFloat(heatTodayObj.state).toFixed(1))
+      : 0.0;
+
     const presetModes = (climate && climate.attributes && climate.attributes.preset_modes) || ["home", "away", "sleep", "ECO", "Alt Sleep"];
     const currentPreset = (climate && climate.attributes && climate.attributes.preset_mode) || "home";
     const isUpstairs = unitKey === "upstairs";
@@ -2090,19 +2115,19 @@ class PassableApplianceCard extends LitElement {
       let cool, heat, avgTemp, cy;
 
       if (isUpstairs) {
-        const upstairsCool = [1.2, 2.0, 4.2, 5.0, 3.5, 3.1, 2.4, 5.2, 5.8, 3.8];
-        const upstairsTemps = ["71.8", "74.2", "78.6", "81.2", "76.5", "75.0", "73.8", "83.1", "85.4", outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2"];
+        const upstairsCool = [1.2, 2.0, 4.2, 5.0, 3.5, 3.1, 2.4, 5.2, 5.8, liveCoolToday];
+        const upstairsTemps = ["71.8", "74.2", "78.6", "81.2", "76.5", "75.0", "73.8", "83.1", "85.4", (outdoorTempObj && outdoorTempObj.state && outdoorTempObj.state !== "unavailable") ? outdoorTempObj.state : "78.2"];
         const upstairsCY = [145, 122, 90, 75, 105, 110, 118, 55, 38, 92];
         cool = upstairsCool[i];
-        heat = isHeatingSeason ? (6.0 - cool * 0.5).toFixed(1) : 0.0;
+        heat = daysAgo === 0 ? liveHeatToday : (isHeatingSeason ? (6.0 - cool * 0.5).toFixed(1) : 0.0);
         avgTemp = upstairsTemps[i];
         cy = upstairsCY[i];
       } else {
-        const downstairsCool = [0.8, 1.4, 3.4, 3.0, 2.6, 2.5, 2.0, 4.8, 5.2, 1.7];
-        const downstairsTemps = ["70.1", "72.5", "74.2", "76.0", "73.2", "72.8", "71.5", "79.4", "81.0", outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "74.2"];
+        const downstairsCool = [0.8, 1.4, 3.4, 3.0, 2.6, 2.5, 2.0, 4.8, 5.2, liveCoolToday];
+        const downstairsTemps = ["70.1", "72.5", "74.2", "76.0", "73.2", "72.8", "71.5", "79.4", "81.0", (outdoorTempObj && outdoorTempObj.state && outdoorTempObj.state !== "unavailable") ? outdoorTempObj.state : "74.2"];
         const downstairsCY = [150, 130, 108, 95, 120, 122, 128, 75, 60, 115];
         cool = downstairsCool[i];
-        heat = isHeatingSeason ? (5.0 - cool * 0.4).toFixed(1) : 0.0;
+        heat = daysAgo === 0 ? liveHeatToday : (isHeatingSeason ? (5.0 - cool * 0.4).toFixed(1) : 0.0);
         avgTemp = downstairsTemps[i];
         cy = downstairsCY[i];
       }
@@ -2133,21 +2158,21 @@ class PassableApplianceCard extends LitElement {
           <div class="hvac-modal-tabs" style="display:flex; gap:4px; background:rgba(0,0,0,0.3); padding:4px; border-radius:12px; margin-bottom:12px;">
             <button
               class="hvac-tab-btn ${activeTab === 'setpoints' ? 'active' : ''}"
-              @click=${() => { this._activeHvacTab = 'setpoints'; this.requestUpdate(); }}
+              @click=${() => this._switchHvacTab('setpoints')}
             >
               <ha-icon icon="mdi:tune" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
               Setpoints
             </button>
             <button
               class="hvac-tab-btn ${activeTab === 'stats' ? 'active' : ''}"
-              @click=${() => { this._activeHvacTab = 'stats'; this.requestUpdate(); }}
+              @click=${() => this._switchHvacTab('stats')}
             >
               <ha-icon icon="mdi:chart-box" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
               Stats & Fan
             </button>
             <button
               class="hvac-tab-btn ${activeTab === 'filter' ? 'active' : ''}"
-              @click=${() => { this._activeHvacTab = 'filter'; this.requestUpdate(); }}
+              @click=${() => this._switchHvacTab('filter')}
             >
               <ha-icon icon="mdi:air-filter" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
               Air Filter
