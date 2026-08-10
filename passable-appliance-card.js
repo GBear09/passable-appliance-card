@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.6.1
+ * Version: 1.7.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (15-Minute Resolution 24h Timeline + 96 Touch Targets + Mathematically Locked Path & Marker Coordinates + 60°-88° Temp Grid)
+ *  6. HVAC Systems (Dynamic Autofit Y-Axis Temperature Range Bounds + User Selectable Resolution Picker for 1m, 5m, 15m, 30m, 1h Data Granularity)
  */
 
-const CARD_VERSION = "1.6.1";
+const CARD_VERSION = "1.7.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2143,22 +2143,18 @@ class PassableApplianceCard extends LitElement {
 
     const activeDay = historyData[selectedDayIdx] || historyData[9];
 
+    const stepMinutes = parseInt(this._hvacTimelineRes || 15, 10);
+    const totalChunks = Math.floor((24 * 60) / stepMinutes);
+
     const selectedChunkIdx = (this._selectedHvacChunkIndex !== undefined && this._selectedHvacChunkIndex !== null)
-      ? this._selectedHvacChunkIndex
-      : 88; // Default ~10:00 PM (chunk 88 / 96)
+      ? Math.min(totalChunks - 1, this._selectedHvacChunkIndex)
+      : Math.floor(totalChunks * (22 / 24)); // Default ~10:00 PM
 
-    // Helper Y-coordinate mapper guaranteed to keep all lines and markers aligned
-    // Temperature scale range: 60°F -> y=160 to 88°F -> y=20 (28° span over 140px)
-    const calcTimelineY = (tempVal) => {
-      const v = Math.max(60, Math.min(88, parseFloat(tempVal) || 72));
-      return 160 - ((v - 60) / 28) * 140;
-    };
-
-    // Generate 96 15-minute resolution data points across 24 hours
-    const timelineData = Array.from({ length: 96 }, (_, idx) => {
-      const cx = 30 + (idx / 95) * 280;
+    // Generate timelineData points based on selected resolution stepMinutes
+    const rawTimelineData = Array.from({ length: totalChunks }, (_, idx) => {
+      const cx = 30 + (idx / Math.max(1, totalChunks - 1)) * 280;
       
-      const totalMinutes = idx * 15;
+      const totalMinutes = idx * stepMinutes;
       const hours = Math.floor(totalMinutes / 60);
       const mins = totalMinutes % 60;
       const displayHour = hours % 12 === 0 ? 12 : hours % 12;
@@ -2167,21 +2163,48 @@ class PassableApplianceCard extends LitElement {
       const timeLabel = `${displayHour}:${minStr} ${ampm}`;
 
       // Smooth mathematical curve models
-      const indoorTemp = (72.0 + Math.sin(idx / 12) * 2.5 + (isUpstairs ? 1.4 : 0.0)).toFixed(1);
+      const indoorTemp = (72.0 + Math.sin(totalMinutes / 180) * 2.5 + (isUpstairs ? 1.4 : 0.0)).toFixed(1);
       const setpoint = (hours >= 7 && hours <= 22) ? (hours >= 20 ? 74 : 72) : (hours >= 23 || hours < 6 ? 72 : 78);
-      
-      // Outdoor curve spanning 60°F - 84°F
-      const outdoorTemp = (72.0 + Math.sin((idx - 24) / 14) * 11.5).toFixed(1);
-      const isActive = (idx >= 6 && idx <= 14) || (idx >= 32 && idx <= 38) || (idx >= 50 && idx <= 55) || (idx >= 66 && idx <= 74) || (idx >= 84 && idx <= 91);
+      const outdoorTemp = (72.0 + Math.sin((totalMinutes - 360) / 210) * 11.5).toFixed(1);
+      const isActive = (hours >= 1 && hours <= 2) || (hours >= 8 && hours <= 9) || (hours >= 12 && hours <= 13) || (hours >= 16 && hours <= 18) || (hours === 21);
 
-      const indoorY = calcTimelineY(indoorTemp);
-      const setpointY = calcTimelineY(setpoint);
-      const outdoorY = calcTimelineY(outdoorTemp);
-
-      return { idx, timeLabel, indoorTemp, setpoint, outdoorTemp, isActive, cx, indoorY, setpointY, outdoorY };
+      return { idx, totalMinutes, timeLabel, indoorTemp, setpoint, outdoorTemp, isActive, cx };
     });
 
-    const activeHourData = timelineData[selectedChunkIdx] || timelineData[88];
+    // DYNAMIC AUTOFIT Y-AXIS BOUNDS CALCULATION
+    const allTemps = rawTimelineData.flatMap(pt => [parseFloat(pt.indoorTemp), parseFloat(pt.setpoint), parseFloat(pt.outdoorTemp)]);
+    const rawMinTemp = Math.min(...allTemps);
+    const rawMaxTemp = Math.max(...allTemps);
+
+    // Autofit min/max grid temperatures with 2°F padding
+    const minGridTemp = Math.floor(rawMinTemp - 2);
+    const maxGridTemp = Math.ceil(rawMaxTemp + 2);
+    const tempSpan = Math.max(1, maxGridTemp - minGridTemp);
+
+    // Y-coordinate mapper mapping [minGridTemp, maxGridTemp] -> [y=160, y=20]
+    const calcTimelineY = (tempVal) => {
+      const v = Math.max(minGridTemp, Math.min(maxGridTemp, parseFloat(tempVal) || minGridTemp));
+      return 160 - ((v - minGridTemp) / tempSpan) * 140;
+    };
+
+    // Apply calculated Y-coordinates to timelineData
+    const timelineData = rawTimelineData.map(pt => ({
+      ...pt,
+      indoorY: calcTimelineY(pt.indoorTemp),
+      setpointY: calcTimelineY(pt.setpoint),
+      outdoorY: calcTimelineY(pt.outdoorTemp)
+    }));
+
+    const activeHourData = timelineData[selectedChunkIdx] || timelineData[timelineData.length - 1];
+
+    // Dynamic Y-axis labels
+    const yGridLabels = {
+      top: `${maxGridTemp}°`,
+      midHigh: `${Math.round(minGridTemp + tempSpan * 0.75)}°`,
+      mid: `${Math.round(minGridTemp + tempSpan * 0.50)}°`,
+      midLow: `${Math.round(minGridTemp + tempSpan * 0.25)}°`,
+      bottom: `${minGridTemp}°`
+    };
 
     // Build exact SVG path strings directly from timelineData so lines and dots match 100%
     const indoorPathString = "M " + timelineData.map(pt => `${pt.cx.toFixed(1)} ${pt.indoorY.toFixed(1)}`).join(" L ");
@@ -2467,27 +2490,52 @@ class PassableApplianceCard extends LitElement {
 
                   <!-- 10-DAY COMBINED RUNTIME & TODAY 24H TIMELINE PLOT -->
                   <div class="materials-section" style="padding:14px; background:rgba(0,0,0,0.35);">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
                       <div style="font-weight:700; font-size:0.9rem; color:var(--primary-text-color);">
                         HVAC Runtime & History (${unitTitle.split('&')[0].trim()})
                       </div>
-                      <div style="display:flex; gap:4px; background:rgba(0,0,0,0.4); padding:3px; border-radius:10px;">
-                        <button
-                          class="hvac-tab-btn ${graphMode === 'multiday' ? 'active' : ''}"
-                          style="padding:4px 8px; font-size:0.7rem;"
-                          @click=${() => { this._hvacGraphMode = 'multiday'; this.requestUpdate(); }}
-                        >
-                          <ha-icon icon="mdi:chart-bar" style="--mdc-icon-size:12px; margin-right:3px;"></ha-icon>
-                          10-Day Bar
-                        </button>
-                        <button
-                          class="hvac-tab-btn ${graphMode === 'timeline' ? 'active' : ''}"
-                          style="padding:4px 8px; font-size:0.7rem;"
-                          @click=${() => { this._hvacGraphMode = 'timeline'; this.requestUpdate(); }}
-                        >
-                          <ha-icon icon="mdi:chart-timeline-variant" style="--mdc-icon-size:12px; margin-right:3px;"></ha-icon>
-                          Today 24h
-                        </button>
+                      <div style="display:flex; gap:6px; align-items:center;">
+                        ${graphMode === 'timeline'
+                          ? html`
+                              <!-- Resolution Picker (1m, 5m, 15m, 30m, 1h) -->
+                              <div style="display:flex; gap:2px; background:rgba(0,0,0,0.4); padding:2px; border-radius:8px; align-items:center;">
+                                <span style="font-size:0.65rem; color:var(--secondary-text-color); margin:0 4px; font-weight:700;">Res:</span>
+                                ${[1, 5, 15, 30, 60].map(
+                                  (r) => html`
+                                    <button
+                                      class="hvac-tab-btn ${stepMinutes === r ? 'active' : ''}"
+                                      style="padding:2px 5px; font-size:0.65rem; border-radius:6px;"
+                                      @click=${() => {
+                                        this._hvacTimelineRes = r;
+                                        this._selectedHvacChunkIndex = null;
+                                        this.requestUpdate();
+                                      }}
+                                    >
+                                      ${r === 60 ? '1h' : r + 'm'}
+                                    </button>
+                                  `
+                                )}
+                              </div>
+                            `
+                          : ''}
+                        <div style="display:flex; gap:4px; background:rgba(0,0,0,0.4); padding:3px; border-radius:10px;">
+                          <button
+                            class="hvac-tab-btn ${graphMode === 'multiday' ? 'active' : ''}"
+                            style="padding:4px 8px; font-size:0.7rem;"
+                            @click=${() => { this._hvacGraphMode = 'multiday'; this.requestUpdate(); }}
+                          >
+                            <ha-icon icon="mdi:chart-bar" style="--mdc-icon-size:12px; margin-right:3px;"></ha-icon>
+                            10-Day Bar
+                          </button>
+                          <button
+                            class="hvac-tab-btn ${graphMode === 'timeline' ? 'active' : ''}"
+                            style="padding:4px 8px; font-size:0.7rem;"
+                            @click=${() => { this._hvacGraphMode = 'timeline'; this.requestUpdate(); }}
+                          >
+                            <ha-icon icon="mdi:chart-timeline-variant" style="--mdc-icon-size:12px; margin-right:3px;"></ha-icon>
+                            Today 24h
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -2590,21 +2638,21 @@ class PassableApplianceCard extends LitElement {
                           <!-- 24-Hour Timeline Plot SVG Canvas -->
                           <div style="position:relative; width:100%; aspect-ratio: 1.8 / 1;">
                             <svg viewBox="0 0 340 180" style="width:100%; height:100%; overflow:visible;">
-                              <!-- Horizontal Grid Lines & Y-Axis Labels (°F) -->
+                              <!-- Horizontal Grid Lines & Dynamic Autofit Y-Axis Labels (°F) -->
                               <line x1="30" y1="20" x2="310" y2="20" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                              <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">82°</text>
+                              <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.top}</text>
 
                               <line x1="30" y1="55" x2="310" y2="55" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                              <text x="5" y="59" fill="#a1a1aa" font-size="10" font-weight="600">78°</text>
+                              <text x="5" y="59" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.midHigh}</text>
 
                               <line x1="30" y1="90" x2="310" y2="90" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                              <text x="5" y="94" fill="#a1a1aa" font-size="10" font-weight="600">75°</text>
+                              <text x="5" y="94" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.mid}</text>
 
                               <line x1="30" y1="125" x2="310" y2="125" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                              <text x="5" y="129" fill="#a1a1aa" font-size="10" font-weight="600">71°</text>
+                              <text x="5" y="129" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.midLow}</text>
 
                               <line x1="30" y1="160" x2="310" y2="160" stroke="rgba(255,255,255,0.3)"/>
-                              <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67°</text>
+                              <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.bottom}</text>
 
                               <!-- Shaded Active HVAC Compressor Bands -->
                               <rect x="55" y="20" width="22" height="140" fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"/>
