@@ -1837,11 +1837,15 @@ class PassableApplianceCard extends LitElement {
     }
 
     // Filter calculations & alert
-    const remHours = parseFloat(filterHours.state);
-    const maxHours = parseFloat(filterLife.state) || 300;
-    const filterPct = !isNaN(remHours) && maxHours > 0 ? Math.max(0, Math.min(100, Math.round((remHours / maxHours) * 100))) : 0;
+    const remHours = (filterHours && filterHours.state !== "unavailable" && filterHours.state !== "unknown" && !isNaN(parseFloat(filterHours.state)))
+      ? parseFloat(filterHours.state)
+      : null;
+    const maxHours = (filterLife && filterLife.state !== "unavailable" && filterLife.state !== "unknown" && !isNaN(parseFloat(filterLife.state)))
+      ? parseFloat(filterLife.state)
+      : 300;
+    const filterPct = remHours !== null && maxHours > 0 ? Math.max(0, Math.min(100, Math.round((remHours / maxHours) * 100))) : 100;
     const filterClass = filterPct < 15 ? "expired" : filterPct < 35 ? "warning" : "ok";
-    const isFilterExpired = filterClass === "expired" || remHours <= 0;
+    const isFilterExpired = remHours !== null && (filterClass === "expired" || remHours <= 0);
 
     // Overshoot display calculation
     const isOvershootActive = overshootActiveObj.state === "on" || (overshootActiveObj.state !== "off" && (hvacAction === "cooling" || hvacAction === "heating"));
@@ -1967,54 +1971,74 @@ class PassableApplianceCard extends LitElement {
     const endIso = endTime.toISOString();
 
     const entities = [climateId, outdoorTempId].filter(Boolean);
-    const filterStr = entities.join(",");
-    const endpoint = `history/period/${startIso}?filter_entity_id=${filterStr}&end_time=${endIso}&no_attributes=false`;
+    let climateHistory = [];
+    let outdoorHistory = [];
+    let fetchedSuccess = false;
 
-    try {
-      const historyRes = await this.hass.callApi("GET", endpoint);
-      if (historyRes && Array.isArray(historyRes)) {
-        if (!this._hvacHistoryCache) this._hvacHistoryCache = {};
-
-        let climateHistory = [];
-        let outdoorHistory = [];
-
-        historyRes.forEach((entityArr, arrIdx) => {
-          if (Array.isArray(entityArr) && entityArr.length > 0) {
-            const entId = entityArr[0].entity_id || entities[arrIdx];
-            if (entId === climateId || arrIdx === 0) {
-              climateHistory = entityArr;
-            } else if (entId === outdoorTempId || arrIdx === 1) {
-              outdoorHistory = entityArr;
-            }
-          }
+    if (typeof this.hass.callWS === "function") {
+      try {
+        const wsRes = await this.hass.callWS({
+          type: "history/history_during_period",
+          start_time: startIso,
+          end_time: endIso,
+          entity_ids: entities,
+          no_attributes: false,
         });
-
-        const sortByTime = (arr) => {
-          if (!Array.isArray(arr)) return [];
-          return arr.slice().sort((a, b) => {
-            const tA = new Date(a.last_updated || a.last_changed || 0).getTime();
-            const tB = new Date(b.last_updated || b.last_changed || 0).getTime();
-            return tA - tB;
-          });
-        };
-
-        climateHistory = sortByTime(climateHistory);
-        outdoorHistory = sortByTime(outdoorHistory);
-
-        this._hvacHistoryCache[unitKey] = {
-          fetchedAt: Date.now(),
-          startTime: startTime.getTime(),
-          endTime: endTime.getTime(),
-          climateId,
-          outdoorTempId,
-          climateHistory,
-          outdoorHistory
-        };
-        this.requestUpdate();
+        if (wsRes && typeof wsRes === "object") {
+          if (Array.isArray(wsRes[climateId])) climateHistory = wsRes[climateId];
+          if (outdoorTempId && Array.isArray(wsRes[outdoorTempId])) outdoorHistory = wsRes[outdoorTempId];
+          fetchedSuccess = true;
+        }
+      } catch (wsErr) {
+        console.warn("Home Assistant WebSocket History API error, falling back to REST API:", wsErr);
       }
-    } catch (e) {
-      console.warn("Home Assistant History API warning:", e);
     }
+
+    if (!fetchedSuccess && typeof this.hass.callApi === "function") {
+      const filterStr = entities.join(",");
+      const endpoint = `history/period/${encodeURIComponent(startIso)}?filter_entity_id=${encodeURIComponent(filterStr)}&end_time=${encodeURIComponent(endIso)}&minimal_response=0&no_attributes=0`;
+      try {
+        const historyRes = await this.hass.callApi("GET", endpoint);
+        if (historyRes && Array.isArray(historyRes)) {
+          historyRes.forEach((entityArr) => {
+            if (Array.isArray(entityArr) && entityArr.length > 0) {
+              const entId = entityArr[0].entity_id;
+              if (entId === climateId) {
+                climateHistory = entityArr;
+              } else if (entId === outdoorTempId) {
+                outdoorHistory = entityArr;
+              }
+            }
+          });
+        }
+      } catch (apiErr) {
+        console.warn("Home Assistant History REST API warning:", apiErr);
+      }
+    }
+
+    const sortByTime = (arr) => {
+      if (!Array.isArray(arr)) return [];
+      return arr.slice().sort((a, b) => {
+        const tA = new Date(a.last_updated || a.last_changed || 0).getTime();
+        const tB = new Date(b.last_updated || b.last_changed || 0).getTime();
+        return tA - tB;
+      });
+    };
+
+    climateHistory = sortByTime(climateHistory);
+    outdoorHistory = sortByTime(outdoorHistory);
+
+    if (!this._hvacHistoryCache) this._hvacHistoryCache = {};
+    this._hvacHistoryCache[unitKey] = {
+      fetchedAt: Date.now(),
+      startTime: startTime.getTime(),
+      endTime: endTime.getTime(),
+      climateId,
+      outdoorTempId,
+      climateHistory,
+      outdoorHistory
+    };
+    this.requestUpdate();
   }
 
   _closeHvacModal() {
@@ -2240,7 +2264,7 @@ class PassableApplianceCard extends LitElement {
 
     const getOutdoorTempNum = (obj) => {
       if (!obj) return 78.2;
-      if (obj.attributes && obj.attributes.temperature !== undefined && obj.attributes.temperature !== null) {
+      if (obj.attributes && obj.attributes.temperature !== undefined && obj.attributes.temperature !== null && !isNaN(parseFloat(obj.attributes.temperature))) {
         return parseFloat(obj.attributes.temperature);
       }
       if (obj.state && !isNaN(parseFloat(obj.state))) {
@@ -2250,9 +2274,40 @@ class PassableApplianceCard extends LitElement {
     };
     const liveOutdoorTempStr = getOutdoorTempNum(outdoorTempObj).toFixed(1);
 
+    // Trigger History REST API / WS fetch if missing or stale (>30s)
+    const cachedHistory = (this._hvacHistoryCache && this._hvacHistoryCache[unitKey]) ? this._hvacHistoryCache[unitKey] : null;
+    if (!cachedHistory || Date.now() - cachedHistory.fetchedAt > 30000) {
+      this._fetchHvacHistoryData(unitKey, climateId, outdoorTempId);
+    }
+
+    const outdoorTimeline = cachedHistory ? cachedHistory.outdoorHistory : [];
+    const climateTimeline = cachedHistory ? cachedHistory.climateHistory : [];
+
+    // Calculate actual average outdoor temperature today from outdoorTimeline if available
+    let calculatedTodayAvgOutdoor = null;
+    if (outdoorTimeline && outdoorTimeline.length > 0) {
+      const validTemps = outdoorTimeline
+        .map(s => {
+          if (s.attributes && s.attributes.temperature !== undefined && s.attributes.temperature !== null && !isNaN(parseFloat(s.attributes.temperature))) {
+            return parseFloat(s.attributes.temperature);
+          }
+          if (s.state && !isNaN(parseFloat(s.state))) {
+            return parseFloat(s.state);
+          }
+          return null;
+        })
+        .filter(v => v !== null && !isNaN(v));
+      if (validTemps.length > 0) {
+        const sum = validTemps.reduce((acc, v) => acc + v, 0);
+        calculatedTodayAvgOutdoor = (sum / validTemps.length).toFixed(1);
+      }
+    }
+
+    const todayOutdoorAvgStr = calculatedTodayAvgOutdoor || (parseFloat(liveOutdoorTempStr) > 80 ? (parseFloat(liveOutdoorTempStr) - 7.5).toFixed(1) : liveOutdoorTempStr);
+
     // Compute 10 consecutive daily records ending on Today (0 to 9 days ago)
     const now = new Date();
-    const historyData = Array.from({ length: 10 }, (_, i) => {
+    const historyDataRaw = Array.from({ length: 10 }, (_, i) => {
       const daysAgo = 9 - i;
       const dateObj = new Date(now.getTime() - daysAgo * 86400000);
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -2261,36 +2316,72 @@ class PassableApplianceCard extends LitElement {
       const dayLabel = daysAgo === 0 ? "Today" : `${dayNum} ${monthStr}`;
 
       const cx = 45 + i * 28;
-      let cool, heat, avgTemp, cy;
+      let cool, heat, avgTemp;
 
       if (isUpstairs) {
         const upstairsCool = [1.2, 2.0, 4.2, 5.0, 3.5, 3.1, 2.4, 5.2, 5.8, liveCoolToday];
-        const upstairsTemps = ["71.8", "74.2", "78.6", "81.2", "76.5", "75.0", "73.8", "83.1", "85.4", liveOutdoorTempStr];
-        const upstairsCY = [145, 122, 90, 75, 105, 110, 118, 55, 38, 92];
+        const upstairsTemps = ["71.8", "74.2", "78.6", "81.2", "76.5", "75.0", "73.8", "83.1", "85.4", todayOutdoorAvgStr];
         cool = upstairsCool[i];
         heat = daysAgo === 0 ? liveHeatToday : (isHeatingSeason ? (6.0 - cool * 0.5).toFixed(1) : 0.0);
         avgTemp = upstairsTemps[i];
-        cy = upstairsCY[i];
       } else {
         const downstairsCool = [0.8, 1.4, 3.4, 3.0, 2.6, 2.5, 2.0, 4.8, 5.2, liveCoolToday];
-        const downstairsTemps = ["70.1", "72.5", "74.2", "76.0", "73.2", "72.8", "71.5", "79.4", "81.0", liveOutdoorTempStr];
-        const downstairsCY = [150, 130, 108, 95, 120, 122, 128, 75, 60, 115];
+        const downstairsTemps = ["70.1", "72.5", "74.2", "76.0", "73.2", "72.8", "71.5", "79.4", "81.0", todayOutdoorAvgStr];
         cool = downstairsCool[i];
         heat = daysAgo === 0 ? liveHeatToday : (isHeatingSeason ? (5.0 - cool * 0.4).toFixed(1) : 0.0);
         avgTemp = downstairsTemps[i];
-        cy = downstairsCY[i];
       }
 
-      return { dayLabel, cool, heat, avgTemp, cx, cy };
+      return { dayLabel, cool, heat, avgTemp, cx };
     });
+
+    // Dynamic Y-Axis scale calculation for 10-day outdoor temperature curve
+    const barTemps = historyDataRaw.map(d => parseFloat(d.avgTemp));
+    const minBarTemp = Math.floor(Math.min(...barTemps) - 2);
+    const maxBarTemp = Math.ceil(Math.max(...barTemps) + 2);
+    const barTempSpan = Math.max(1, maxBarTemp - minBarTemp);
+
+    const calcBarY = (tempVal) => {
+      const v = Math.max(minBarTemp, Math.min(maxBarTemp, parseFloat(tempVal) || minBarTemp));
+      return 160 - ((v - minBarTemp) / barTempSpan) * 140;
+    };
+
+    const historyData = historyDataRaw.map(d => ({
+      ...d,
+      cy: calcBarY(d.avgTemp)
+    }));
 
     const activeDay = historyData[selectedDayIdx] || historyData[9];
 
-    // Trigger History REST API fetch if missing or stale (>30s)
-    const cachedHistory = (this._hvacHistoryCache && this._hvacHistoryCache[unitKey]) ? this._hvacHistoryCache[unitKey] : null;
-    if (!cachedHistory || Date.now() - cachedHistory.fetchedAt > 30000) {
-      this._fetchHvacHistoryData(unitKey, climateId, outdoorTempId);
-    }
+    const barYGridLabels = {
+      top: `${maxBarTemp}`,
+      midHigh: `${Math.round(minBarTemp + barTempSpan * 0.75)}`,
+      mid: `${Math.round(minBarTemp + barTempSpan * 0.50)}`,
+      midLow: `${Math.round(minBarTemp + barTempSpan * 0.25)}`,
+      bottom: `${minBarTemp}`
+    };
+
+    // Smooth SVG path builder function
+    const buildSmoothPath = (pts) => {
+      if (!pts || pts.length === 0) return "";
+      if (pts.length === 1) return `M ${pts[0].cx} ${pts[0].cy}`;
+      let d = `M ${pts[0].cx.toFixed(1)} ${pts[0].cy.toFixed(1)}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+
+        const cp1x = p1.cx + (p2.cx - p0.cx) / 6;
+        const cp1y = p1.cy + (p2.cy - p0.cy) / 6;
+        const cp2x = p2.cx - (p3.cx - p1.cx) / 6;
+        const cp2y = p2.cy - (p3.cy - p1.cy) / 6;
+
+        d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.cx.toFixed(1)} ${p2.cy.toFixed(1)}`;
+      }
+      return d;
+    };
+    const multiDayPathString = buildSmoothPath(historyData);
 
     const endTimeMs = cachedHistory ? cachedHistory.endTime : Date.now();
     const startTimeMs = cachedHistory ? cachedHistory.startTime : (endTimeMs - 24 * 3600 * 1000);
@@ -2302,23 +2393,19 @@ class PassableApplianceCard extends LitElement {
       ? Math.min(totalChunks - 1, this._selectedHvacChunkIndex)
       : (totalChunks - 1); // Default to current moment (Now)
 
-    // State timelines from real HA recorder history payload
-    const climateTimeline = cachedHistory ? cachedHistory.climateHistory : [];
-    const outdoorTimeline = cachedHistory ? cachedHistory.outdoorHistory : [];
-
     // Helper: Find active state in history stream for a given timestamp
     const getStateAt = (timeline, targetMs) => {
       if (!timeline || timeline.length === 0) return null;
-      let active = timeline[0];
+      let active = null;
       for (let i = 0; i < timeline.length; i++) {
-        const itemTime = new Date(timeline[i].last_updated || timeline[i].last_changed).getTime();
+        const itemTime = new Date(timeline[i].last_updated || timeline[i].last_changed || 0).getTime();
         if (itemTime <= targetMs) {
           active = timeline[i];
         } else {
           break;
         }
       }
-      return active;
+      return active || timeline[0];
     };
 
     // Current live fallbacks if historical sample is missing
@@ -2327,10 +2414,10 @@ class PassableApplianceCard extends LitElement {
 
     let fallbackOutdoor = 75;
     if (outdoorTempObj) {
-      if (outdoorTempObj.state && !isNaN(parseFloat(outdoorTempObj.state))) {
-        fallbackOutdoor = parseFloat(outdoorTempObj.state);
-      } else if (outdoorTempObj.attributes && outdoorTempObj.attributes.temperature !== undefined) {
+      if (outdoorTempObj.attributes && outdoorTempObj.attributes.temperature !== undefined && outdoorTempObj.attributes.temperature !== null && !isNaN(parseFloat(outdoorTempObj.attributes.temperature))) {
         fallbackOutdoor = parseFloat(outdoorTempObj.attributes.temperature);
+      } else if (outdoorTempObj.state && !isNaN(parseFloat(outdoorTempObj.state))) {
+        fallbackOutdoor = parseFloat(outdoorTempObj.state);
       }
     }
 
@@ -2376,10 +2463,10 @@ class PassableApplianceCard extends LitElement {
       if (outdoorTimeline.length > 0) {
         const oState = getStateAt(outdoorTimeline, pointTimeMs);
         if (oState) {
-          if (oState.state && !isNaN(parseFloat(oState.state))) {
-            outdoorTemp = parseFloat(oState.state);
-          } else if (oState.attributes && oState.attributes.temperature !== undefined) {
+          if (oState.attributes && oState.attributes.temperature !== undefined && oState.attributes.temperature !== null && !isNaN(parseFloat(oState.attributes.temperature))) {
             outdoorTemp = parseFloat(oState.attributes.temperature);
+          } else if (oState.state && !isNaN(parseFloat(oState.state))) {
+            outdoorTemp = parseFloat(oState.state);
           }
         }
       }
@@ -2805,39 +2892,50 @@ class PassableApplianceCard extends LitElement {
                               <!-- Horizontal Grid Lines & Y-Axis Labels -->
                               <line x1="30" y1="20" x2="310" y2="20" stroke="rgba(255,255,255,0.15)" stroke-dasharray="3 3"/>
                               <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">6.0</text>
-                              <text x="315" y="24" fill="#a1a1aa" font-size="10" font-weight="600">82</text>
+                              <text x="315" y="24" fill="#a1a1aa" font-size="10" font-weight="600">${barYGridLabels.top}</text>
 
                               <line x1="30" y1="55" x2="310" y2="55" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
                               <text x="5" y="59" fill="#a1a1aa" font-size="10" font-weight="600">4.5</text>
-                              <text x="315" y="59" fill="#a1a1aa" font-size="10" font-weight="600">78</text>
+                              <text x="315" y="59" fill="#a1a1aa" font-size="10" font-weight="600">${barYGridLabels.midHigh}</text>
 
                               <line x1="30" y1="90" x2="310" y2="90" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
                               <text x="5" y="94" fill="#a1a1aa" font-size="10" font-weight="600">3.0</text>
-                              <text x="315" y="94" fill="#a1a1aa" font-size="10" font-weight="600">75</text>
+                              <text x="315" y="94" fill="#a1a1aa" font-size="10" font-weight="600">${barYGridLabels.mid}</text>
 
                               <line x1="30" y1="125" x2="310" y2="125" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
                               <text x="5" y="129" fill="#a1a1aa" font-size="10" font-weight="600">1.5</text>
-                              <text x="315" y="129" fill="#a1a1aa" font-size="10" font-weight="600">71</text>
+                              <text x="315" y="129" fill="#a1a1aa" font-size="10" font-weight="600">${barYGridLabels.midLow}</text>
 
                               <line x1="30" y1="160" x2="310" y2="160" stroke="rgba(255,255,255,0.3)"/>
                               <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">0.0</text>
-                              <text x="315" y="164" fill="#a1a1aa" font-size="10" font-weight="600">67</text>
+                              <text x="315" y="164" fill="#a1a1aa" font-size="10" font-weight="600">${barYGridLabels.bottom}</text>
 
                               <!-- 10 Daily Cooling/Heating Bars in SVG Namespace with Click Event -->
-                              <rect x="38" y="${160 - (isUpstairs ? 28 : 19)}" width="14" height="${isUpstairs ? 28 : 19}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 0 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 0 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(0)}/>
-                              <rect x="66" y="${160 - (isUpstairs ? 47 : 33)}" width="14" height="${isUpstairs ? 47 : 33}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 1 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 1 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(1)}/>
-                              <rect x="94" y="${160 - (isUpstairs ? 98 : 79)}" width="14" height="${isUpstairs ? 98 : 79}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 2 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 2 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(2)}/>
-                              <rect x="122" y="${160 - (isUpstairs ? 117 : 70)}" width="14" height="${isUpstairs ? 117 : 70}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 3 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 3 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(3)}/>
-                              <rect x="150" y="${160 - (isUpstairs ? 82 : 61)}" width="14" height="${isUpstairs ? 82 : 61}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 4 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 4 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(4)}/>
-                              <rect x="178" y="${160 - (isUpstairs ? 72 : 58)}" width="14" height="${isUpstairs ? 72 : 58}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 5 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 5 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(5)}/>
-                              <rect x="206" y="${160 - (isUpstairs ? 56 : 47)}" width="14" height="${isUpstairs ? 56 : 47}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 6 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 6 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(6)}/>
-                              <rect x="234" y="${160 - (isUpstairs ? 122 : 112)}" width="14" height="${isUpstairs ? 122 : 112}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 7 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 7 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(7)}/>
-                              <rect x="262" y="${160 - (isUpstairs ? 135 : 122)}" width="14" height="${isUpstairs ? 135 : 122}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 8 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 8 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(8)}/>
-                              <rect x="290" y="${160 - (Math.max(6, Math.min(140, (liveCoolToday / 6) * 140)))}" width="14" height="${Math.max(6, Math.min(140, (liveCoolToday / 6) * 140))}" rx="3" fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}" stroke="${selectedDayIdx === 9 ? '#ffffff' : '#38bdf8'}" stroke-width="${selectedDayIdx === 9 ? 2.5 : 1.2}" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(9)}/>
+                              ${historyData.map((d, i) => {
+                                const runtime = isHeatingSeason ? parseFloat(d.heat) : parseFloat(d.cool);
+                                const barH = Math.max(4, Math.min(140, (runtime / 6.0) * 140));
+                                const barY = 160 - barH;
+                                const barX = d.cx - 7;
+                                const isSelected = selectedDayIdx === i;
+                                return html`
+                                  <rect
+                                    x="${barX}"
+                                    y="${barY}"
+                                    width="14"
+                                    height="${barH}"
+                                    rx="3"
+                                    fill="${isHeatingSeason ? '#ea580c' : '#2563eb'}"
+                                    stroke="${isSelected ? '#ffffff' : '#38bdf8'}"
+                                    stroke-width="${isSelected ? 2.5 : 1.2}"
+                                    style="cursor:pointer;"
+                                    @click=${() => this._selectHvacHistoryDay(i)}
+                                  />
+                                `;
+                              })}
 
                               <!-- Outdoor Temperature Curved Overlay Line -->
                               <path
-                                d="M 30 160 C 45 150, 55 130, 73 122 C 88 105, 95 80, 101 90 C 115 70, 125 70, 129 75 C 145 85, 150 100, 157 105 C 170 115, 180 112, 185 110 C 200 115, 208 116, 213 118 C 228 100, 235 60, 241 55 C 255 42, 263 35, 269 38 C 282 60, 290 85, 297 92"
+                                d="${multiDayPathString}"
                                 fill="none"
                                 stroke="#ffffff"
                                 stroke-width="2.5"
@@ -3732,13 +3830,13 @@ class PassableApplianceCardEditor extends LitElement {
           @value-changed=${this._onFieldChange}
         ></ha-selector>
 
-        <!-- Outdoor Temperature Sensor Selector -->
+        <!-- Outdoor Weather / Temperature Entity Selector -->
         <ha-selector
           .hass=${this.hass}
-          .selector=${{ entity: { domain: "sensor" } }}
-          .value=${c.outdoor_temp_sensor || "sensor.outdoor_temperature"}
-          .configValue=${"outdoor_temp_sensor"}
-          .label=${"Outdoor Temperature Sensor (e.g. sensor.outdoor_temperature)"}
+          .selector=${{ entity: { domain: ["weather", "sensor"] } }}
+          .value=${c.outdoor_weather_entity || c.outdoor_temp_sensor || c.outdoor_temp || "weather.home"}
+          .configValue=${"outdoor_weather_entity"}
+          .label=${"Outdoor Weather or Temperature Entity (e.g. weather.home or sensor.outdoor_temperature)"}
           @value-changed=${this._onFieldChange}
         ></ha-selector>
 
