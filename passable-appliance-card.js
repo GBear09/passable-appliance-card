@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.5
+ * Version: 1.8.6
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.8.5";
+const CARD_VERSION = "1.8.6";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2547,6 +2547,10 @@ class PassableApplianceCard extends LitElement {
       activeBands.push({ x: currentBandStart, width: bandWidth });
     }
 
+    const activeBandsPath = activeBands.map(b => 
+      `M ${b.x.toFixed(1)} 20 H ${(b.x + b.width).toFixed(1)} V 160 H ${b.x.toFixed(1)} Z`
+    ).join(" ");
+
     // Dynamic X-axis 24h rolling labels (7 timestamps across 24h)
     const xLabels = Array.from({ length: 7 }, (_, i) => {
       const idx = Math.min(timelineData.length - 1, Math.floor(i * (timelineData.length - 1) / 6));
@@ -3008,17 +3012,14 @@ class PassableApplianceCard extends LitElement {
                               <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.bottom}</text>
 
                               <!-- Shaded Active HVAC Compressor Bands (Real HA History Data) -->
-                              ${activeBands.map(
-                                (b) => html`
-                                  <rect
-                                    x="${b.x}"
-                                    y="20"
-                                    width="${b.width}"
-                                    height="140"
-                                    fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"
-                                  />
-                                `
-                              )}
+                              ${activeBandsPath
+                                ? html`
+                                    <path
+                                      d="${activeBandsPath}"
+                                      fill="${isHeatingSeason ? 'rgba(234,88,12,0.35)' : 'rgba(2,132,199,0.35)'}"
+                                    />
+                                  `
+                                : ""}
 
                               <!-- Vertical Hairline Indicator Line for Selected Hour -->
                               <line x1="${activeHourData.cx}" y1="20" x2="${activeHourData.cx}" y2="160" stroke="rgba(255,255,255,0.4)" stroke-dasharray="2 2"/>
