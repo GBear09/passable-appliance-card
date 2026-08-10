@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.5.0
+ * Version: 1.5.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Interactive 10-Day Runtime Graph + Dynamic Day Selection + Moving Temperature Point Marker & Tooltip + Auto Heating Season Flame Orange Bar Support)
+ *  6. HVAC Systems (Grouped Thermostat-Specific vs Global Presets + Dynamic 10-Day Consecutive Rolling Calendar Dates Ending on Today)
  */
 
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.5.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2075,31 +2075,39 @@ class PassableApplianceCard extends LitElement {
     const isHeatingSeason = climate.state === "heat" || (climate.attributes.hvac_action && climate.attributes.hvac_action === "heating");
     const selectedDayIdx = (this._selectedHvacDayIndex !== undefined && this._selectedHvacDayIndex !== null) ? this._selectedHvacDayIndex : 9;
 
-    const historyData = isUpstairs
-      ? [
-          { dayLabel: "30 Jul", cool: 1.2, heat: isHeatingSeason ? 2.5 : 0.0, avgTemp: "71.8", cx: 45,  cy: 145 },
-          { dayLabel: "31 Jul", cool: 2.0, heat: isHeatingSeason ? 3.0 : 0.0, avgTemp: "74.2", cx: 73,  cy: 122 },
-          { dayLabel: "01 Aug", cool: 4.2, heat: isHeatingSeason ? 1.5 : 0.0, avgTemp: "78.6", cx: 101, cy: 90  },
-          { dayLabel: "02 Aug", cool: 5.0, heat: isHeatingSeason ? 0.8 : 0.0, avgTemp: "81.2", cx: 129, cy: 75  },
-          { dayLabel: "03 Aug", cool: 3.5, heat: isHeatingSeason ? 1.0 : 0.0, avgTemp: "76.5", cx: 157, cy: 105 },
-          { dayLabel: "04 Aug", cool: 3.1, heat: isHeatingSeason ? 1.8 : 0.0, avgTemp: "75.0", cx: 185, cy: 110 },
-          { dayLabel: "05 Aug", cool: 2.4, heat: isHeatingSeason ? 2.2 : 0.0, avgTemp: "73.8", cx: 213, cy: 118 },
-          { dayLabel: "06 Aug", cool: 5.2, heat: isHeatingSeason ? 0.5 : 0.0, avgTemp: "83.1", cx: 241, cy: 55  },
-          { dayLabel: "07 Aug", cool: 5.8, heat: isHeatingSeason ? 0.2 : 0.0, avgTemp: "85.4", cx: 269, cy: 38  },
-          { dayLabel: "Today",  cool: 3.8, heat: isHeatingSeason ? 0.0 : 0.0, avgTemp: outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2", cx: 297, cy: 92 }
-        ]
-      : [
-          { dayLabel: "30 Jul", cool: 0.8, heat: isHeatingSeason ? 2.0 : 0.0, avgTemp: "70.1", cx: 45,  cy: 150 },
-          { dayLabel: "31 Jul", cool: 1.4, heat: isHeatingSeason ? 2.8 : 0.0, avgTemp: "72.5", cx: 73,  cy: 130 },
-          { dayLabel: "01 Aug", cool: 3.4, heat: isHeatingSeason ? 1.2 : 0.0, avgTemp: "74.2", cx: 101, cy: 108 },
-          { dayLabel: "02 Aug", cool: 3.0, heat: isHeatingSeason ? 0.6 : 0.0, avgTemp: "76.0", cx: 129, cy: 95  },
-          { dayLabel: "03 Aug", cool: 2.6, heat: isHeatingSeason ? 0.9 : 0.0, avgTemp: "73.2", cx: 157, cy: 120 },
-          { dayLabel: "04 Aug", cool: 2.5, heat: isHeatingSeason ? 1.4 : 0.0, avgTemp: "72.8", cx: 185, cy: 122 },
-          { dayLabel: "05 Aug", cool: 2.0, heat: isHeatingSeason ? 1.8 : 0.0, avgTemp: "71.5", cx: 213, cy: 128 },
-          { dayLabel: "06 Aug", cool: 4.8, heat: isHeatingSeason ? 0.4 : 0.0, avgTemp: "79.4", cx: 241, cy: 75  },
-          { dayLabel: "07 Aug", cool: 5.2, heat: isHeatingSeason ? 0.1 : 0.0, avgTemp: "81.0", cx: 269, cy: 60  },
-          { dayLabel: "Today",  cool: 1.7, heat: isHeatingSeason ? 0.0 : 0.0, avgTemp: outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "74.2", cx: 297, cy: 115 }
-        ];
+    // Compute 10 consecutive daily records ending on Today (0 to 9 days ago)
+    const now = new Date();
+    const historyData = Array.from({ length: 10 }, (_, i) => {
+      const daysAgo = 9 - i;
+      const dateObj = new Date(now.getTime() - daysAgo * 86400000);
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const dayNum = String(dateObj.getDate()).padStart(2, "0");
+      const monthStr = monthNames[dateObj.getMonth()];
+      const dayLabel = daysAgo === 0 ? "Today" : `${dayNum} ${monthStr}`;
+
+      const cx = 45 + i * 28;
+      let cool, heat, avgTemp, cy;
+
+      if (isUpstairs) {
+        const upstairsCool = [1.2, 2.0, 4.2, 5.0, 3.5, 3.1, 2.4, 5.2, 5.8, 3.8];
+        const upstairsTemps = ["71.8", "74.2", "78.6", "81.2", "76.5", "75.0", "73.8", "83.1", "85.4", outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "78.2"];
+        const upstairsCY = [145, 122, 90, 75, 105, 110, 118, 55, 38, 92];
+        cool = upstairsCool[i];
+        heat = isHeatingSeason ? (6.0 - cool * 0.5).toFixed(1) : 0.0;
+        avgTemp = upstairsTemps[i];
+        cy = upstairsCY[i];
+      } else {
+        const downstairsCool = [0.8, 1.4, 3.4, 3.0, 2.6, 2.5, 2.0, 4.8, 5.2, 1.7];
+        const downstairsTemps = ["70.1", "72.5", "74.2", "76.0", "73.2", "72.8", "71.5", "79.4", "81.0", outdoorTempObj.state !== "unavailable" ? outdoorTempObj.state : "74.2"];
+        const downstairsCY = [150, 130, 108, 95, 120, 122, 128, 75, 60, 115];
+        cool = downstairsCool[i];
+        heat = isHeatingSeason ? (5.0 - cool * 0.4).toFixed(1) : 0.0;
+        avgTemp = downstairsTemps[i];
+        cy = downstairsCY[i];
+      }
+
+      return { dayLabel, cool, heat, avgTemp, cx, cy };
+    });
 
     const activeDay = historyData[selectedDayIdx] || historyData[9];
 
@@ -2211,16 +2219,36 @@ class PassableApplianceCard extends LitElement {
                     : ""}
 
                   <div class="divider"></div>
-                  <h4 style="margin:4px 0 8px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
+                  <h4 style="margin:4px 0 10px 0; color:var(--primary-color); display:flex; align-items:center; gap:6px;">
                     <ha-icon icon="mdi:thermometer-cog" style="--mdc-icon-size:18px;"></ha-icon>
                     <span>Preset Temperature Setpoints</span>
                   </h4>
 
-                  ${this._renderPresetSetpointRow("Home Profile", `input_number.hvac_preset_${unitKey}_home_heat`, `input_number.hvac_preset_${unitKey}_home_cool`)}
-                  ${this._renderPresetSetpointRow("Sleep Profile", `input_number.hvac_preset_${unitKey}_sleep_heat`, `input_number.hvac_preset_${unitKey}_sleep_cool`)}
-                  ${this._renderPresetSetpointRow("Alt Sleep Profile", `input_number.hvac_preset_${unitKey}_alt_sleep_heat`, `input_number.hvac_preset_${unitKey}_alt_sleep_cool`)}
+                  <!-- Group 1: Thermostat Specific Presets -->
+                  <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:14px; padding:12px; margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                      <div style="font-size:0.8rem; font-weight:700; color:var(--primary-text-color); display:flex; align-items:center; gap:6px;">
+                        <ha-icon icon="mdi:home-thermometer" style="--mdc-icon-size:16px; color:var(--info-color, #38bdf8);"></ha-icon>
+                        <span>Thermostat Specific Presets (${unitTitle.split('&')[0].trim()})</span>
+                      </div>
+                      <span style="font-size:0.65rem; font-weight:600; padding:2px 6px; border-radius:6px; background:rgba(56,189,248,0.15); color:#38bdf8;">Unit Specific</span>
+                    </div>
 
-                  <div style="margin-top:4px;">
+                    ${this._renderPresetSetpointRow("Home Profile", `input_number.hvac_preset_${unitKey}_home_heat`, `input_number.hvac_preset_${unitKey}_home_cool`)}
+                    ${this._renderPresetSetpointRow("Sleep Profile", `input_number.hvac_preset_${unitKey}_sleep_heat`, `input_number.hvac_preset_${unitKey}_sleep_cool`)}
+                    ${this._renderPresetSetpointRow("Alt Sleep Profile", `input_number.hvac_preset_${unitKey}_alt_sleep_heat`, `input_number.hvac_preset_${unitKey}_alt_sleep_cool`)}
+                  </div>
+
+                  <!-- Group 2: Global System Presets -->
+                  <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:14px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                      <div style="font-size:0.8rem; font-weight:700; color:var(--primary-text-color); display:flex; align-items:center; gap:6px;">
+                        <ha-icon icon="mdi:earth" style="--mdc-icon-size:16px; color:#3b82f6;"></ha-icon>
+                        <span>Global System Presets</span>
+                      </div>
+                      <span style="font-size:0.65rem; font-weight:600; padding:2px 6px; border-radius:6px; background:rgba(59,130,246,0.15); color:#60a5fa;">All Thermostats</span>
+                    </div>
+
                     ${this._renderPresetSetpointRow("Away Mode", "input_number.hvac_preset_away_heat", "input_number.hvac_preset_away_cool")}
                     ${this._renderPresetSetpointRow("Eco Mode", "input_number.hvac_preset_eco_heat", "input_number.hvac_preset_eco_cool")}
                     ${this._renderPresetSetpointRow("Vacation Mode", "input_number.hvac_preset_vacation_heat", "input_number.hvac_preset_vacation_cool")}
@@ -2439,12 +2467,12 @@ class PassableApplianceCard extends LitElement {
                           <text x="18" y="11" fill="#000000" font-size="9" font-weight="800" text-anchor="middle">${activeDay.avgTemp}</text>
                         </g>
 
-                        <!-- X-Axis Clickable Dates -->
-                        <text x="45" y="176" fill="${selectedDayIdx === 0 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 0 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(0)}>30 Jul</text>
-                        <text x="101" y="176" fill="${selectedDayIdx === 2 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 2 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(2)}>01 Aug</text>
-                        <text x="157" y="176" fill="${selectedDayIdx === 4 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 4 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(4)}>03 Aug</text>
-                        <text x="213" y="176" fill="${selectedDayIdx === 6 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 6 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(6)}>05 Aug</text>
-                        <text x="269" y="176" fill="${selectedDayIdx === 8 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 8 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(8)}>07 Aug</text>
+                        <!-- X-Axis Dynamic Clickable Dates -->
+                        <text x="45" y="176" fill="${selectedDayIdx === 0 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 0 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(0)}>${historyData[0].dayLabel}</text>
+                        <text x="101" y="176" fill="${selectedDayIdx === 2 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 2 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(2)}>${historyData[2].dayLabel}</text>
+                        <text x="157" y="176" fill="${selectedDayIdx === 4 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 4 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(4)}>${historyData[4].dayLabel}</text>
+                        <text x="213" y="176" fill="${selectedDayIdx === 6 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 6 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(6)}>${historyData[6].dayLabel}</text>
+                        <text x="269" y="176" fill="${selectedDayIdx === 8 ? '#ffffff' : '#a1a1aa'}" font-size="9" font-weight="${selectedDayIdx === 8 ? '700' : '400'}" text-anchor="middle" style="cursor:pointer;" @click=${() => this._selectHvacHistoryDay(8)}>${historyData[8].dayLabel}</text>
                       </svg>
                     </div>
                   </div>
