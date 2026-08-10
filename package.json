@@ -1,6 +1,6 @@
 {
   "name": "passable-appliance-card",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "Dynamic universal appliance card for Home Assistant supporting refrigerators, induction ranges & ovens, laundry, water heaters, smart hose timers, and multi-system local HomeKit HVAC systems.",
   "main": "passable-appliance-card.js",
   "repository": {

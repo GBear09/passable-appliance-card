@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.1
+ * Version: 1.8.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (Properly Scope activeBands & xLabels to Eliminate ReferenceError + 100% Real Home Assistant Recorder History API Integration)
+ *  6. HVAC Systems (Auto-Resolve Real HA Entity IDs climate.upstairs/climate.downstairs + Preserve History Attributes + Full Drag/Click Touch Pointer Event Controls)
  */
 
-const CARD_VERSION = "1.8.1";
+const CARD_VERSION = "1.8.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1968,7 +1968,7 @@ class PassableApplianceCard extends LitElement {
 
     const entities = [climateId, outdoorTempId].filter(Boolean);
     const filterStr = entities.join(",");
-    const endpoint = `history/period/${startIso}?filter_entity_id=${filterStr}&end_time=${endIso}&minimal_response&no_attributes=false`;
+    const endpoint = `history/period/${startIso}?filter_entity_id=${filterStr}&end_time=${endIso}&no_attributes=false`;
 
     try {
       const historyRes = await this.hass.callApi("GET", endpoint);
@@ -2068,6 +2068,56 @@ class PassableApplianceCard extends LitElement {
     this.requestUpdate();
   }
 
+  _handleGraphClick(e, timelineData) {
+    if (!timelineData || timelineData.length === 0) return;
+    const svgEl = e.currentTarget;
+    const rect = svgEl.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const svgWidth = rect.width;
+    const normalizedX = (clickX / svgWidth) * 340;
+
+    let closestIdx = 0;
+    let minDiff = Infinity;
+    timelineData.forEach((pt, i) => {
+      const diff = Math.abs(pt.cx - normalizedX);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = i;
+      }
+    });
+
+    this._selectTimelineChunk(closestIdx);
+  }
+
+  _handleGraphDrag(e, timelineData) {
+    if (e.buttons === 1) {
+      this._handleGraphClick(e, timelineData);
+    }
+  }
+
+  _handleGraphTouchDrag(e, timelineData) {
+    if (e.touches && e.touches.length > 0) {
+      const touch = e.touches[0];
+      const svgEl = e.currentTarget;
+      const rect = svgEl.getBoundingClientRect();
+      const clickX = touch.clientX - rect.left;
+      const svgWidth = rect.width;
+      const normalizedX = (clickX / svgWidth) * 340;
+
+      let closestIdx = 0;
+      let minDiff = Infinity;
+      timelineData.forEach((pt, i) => {
+        const diff = Math.abs(pt.cx - normalizedX);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIdx = i;
+        }
+      });
+
+      this._selectTimelineChunk(closestIdx);
+    }
+  }
+
   _renderPresetSetpointRow(label, heatEntityId, coolEntityId) {
     const heatObj = this._getEntity(heatEntityId);
     const coolObj = this._getEntity(coolEntityId);
@@ -2114,9 +2164,23 @@ class PassableApplianceCard extends LitElement {
     const c = this.config;
     const sysConfig = (systems || []).find((s) => s.key === unitKey) || {};
     const unitTitle = sysConfig.name || (unitKey === "downstairs" ? "Downstairs & Basement" : "Upstairs & Attic");
-    const climateId = sysConfig.climate || c[`${unitKey}_climate_hk`] || c[`${unitKey}_climate`] || `climate.${unitKey}_hk`;
+    const resolveEntity = (primaryId, fallbacks) => {
+      if (this.hass && this.hass.states[primaryId]) return primaryId;
+      for (const fb of fallbacks) {
+        if (this.hass && this.hass.states[fb]) return fb;
+      }
+      return primaryId;
+    };
+
+    const climateId = resolveEntity(
+      sysConfig.climate || c[`${unitKey}_climate`],
+      [`climate.${unitKey}`, `climate.${unitKey}_hk`, `climate.${unitKey}_thermostat`, `climate.hvac_${unitKey}`]
+    );
     const acCondensersId = c.ac_condensers_uncovered || "input_boolean.ac_condensers_uncovered";
-    const outdoorTempId = c.outdoor_temp_sensor || "sensor.outdoor_temperature";
+    const outdoorTempId = resolveEntity(
+      sysConfig.outdoor_temp || c.outdoor_temp_sensor || c.outdoor_temp,
+      ["sensor.outdoor_temperature", "weather.home", "weather.downstairs", "weather.upstairs"]
+    );
     const fanCircId = sysConfig.fan_circulation || c[`${unitKey}_fan_circulation`] || `input_number.hvac_fan_circulation_${unitKey}`;
     const fanCircActiveId = sysConfig.fan_circ_active || c[`${unitKey}_fan_circ_active`] || `input_boolean.hvac_fan_circulation_active_${unitKey}`;
     const overshootActiveId = sysConfig.overshoot_active || c[`${unitKey}_overshoot_active`] || `input_boolean.hvac_overshoot_active_${unitKey}`;
@@ -2198,32 +2262,105 @@ class PassableApplianceCard extends LitElement {
 
     const activeDay = historyData[selectedDayIdx] || historyData[9];
 
+    // Trigger History REST API fetch if missing or stale (>30s)
+    const cachedHistory = (this._hvacHistoryCache && this._hvacHistoryCache[unitKey]) ? this._hvacHistoryCache[unitKey] : null;
+    if (!cachedHistory || Date.now() - cachedHistory.fetchedAt > 30000) {
+      this._fetchHvacHistoryData(unitKey, climateId, outdoorTempId);
+    }
+
+    const endTimeMs = cachedHistory ? cachedHistory.endTime : Date.now();
+    const startTimeMs = cachedHistory ? cachedHistory.startTime : (endTimeMs - 24 * 3600 * 1000);
+
     const stepMinutes = parseInt(this._hvacTimelineRes || 15, 10);
-    const totalChunks = Math.floor((24 * 60) / stepMinutes);
+    const totalChunks = Math.max(1, Math.floor((24 * 60) / stepMinutes));
 
     const selectedChunkIdx = (this._selectedHvacChunkIndex !== undefined && this._selectedHvacChunkIndex !== null)
       ? Math.min(totalChunks - 1, this._selectedHvacChunkIndex)
-      : Math.floor(totalChunks * (22 / 24)); // Default ~10:00 PM
+      : (totalChunks - 1); // Default to current moment (Now)
 
-    // Generate timelineData points based on selected resolution stepMinutes
+    // State timelines from real HA recorder history payload
+    const climateTimeline = cachedHistory ? cachedHistory.climateHistory : [];
+    const outdoorTimeline = cachedHistory ? cachedHistory.outdoorHistory : [];
+
+    // Helper: Find active state in history stream for a given timestamp
+    const getStateAt = (timeline, targetMs) => {
+      if (!timeline || timeline.length === 0) return null;
+      let active = timeline[0];
+      for (let i = 0; i < timeline.length; i++) {
+        const itemTime = new Date(timeline[i].last_updated || timeline[i].last_changed).getTime();
+        if (itemTime <= targetMs) {
+          active = timeline[i];
+        } else {
+          break;
+        }
+      }
+      return active;
+    };
+
+    // Current live fallbacks if historical sample is missing
+    const fallbackIndoor = (climate && climate.attributes && climate.attributes.current_temperature) ? climate.attributes.current_temperature : 72;
+    const fallbackSetpoint = (climate && climate.attributes && (climate.attributes.temperature || climate.attributes.target_temp_low || climate.attributes.target_temp_high)) ? (climate.attributes.temperature || climate.attributes.target_temp_low || climate.attributes.target_temp_high) : 72;
+
+    let fallbackOutdoor = 75;
+    if (outdoorTempObj) {
+      if (outdoorTempObj.state && !isNaN(parseFloat(outdoorTempObj.state))) {
+        fallbackOutdoor = parseFloat(outdoorTempObj.state);
+      } else if (outdoorTempObj.attributes && outdoorTempObj.attributes.temperature !== undefined) {
+        fallbackOutdoor = parseFloat(outdoorTempObj.attributes.temperature);
+      }
+    }
+
+    // Generate 100% REAL timelineData points directly from Home Assistant Recorder History API
     const rawTimelineData = Array.from({ length: totalChunks }, (_, idx) => {
       const cx = 30 + (idx / Math.max(1, totalChunks - 1)) * 280;
-      
-      const totalMinutes = idx * stepMinutes;
-      const hours = Math.floor(totalMinutes / 60);
-      const mins = totalMinutes % 60;
+      const pointTimeMs = startTimeMs + (idx / Math.max(1, totalChunks - 1)) * (24 * 3600 * 1000);
+      const pointDate = new Date(pointTimeMs);
+
+      const hours = pointDate.getHours();
+      const mins = pointDate.getMinutes();
       const displayHour = hours % 12 === 0 ? 12 : hours % 12;
       const ampm = hours < 12 ? "AM" : "PM";
       const minStr = String(mins).padStart(2, "0");
       const timeLabel = `${displayHour}:${minStr} ${ampm}`;
 
-      // Smooth mathematical curve models
-      const indoorTemp = (72.0 + Math.sin(totalMinutes / 180) * 2.5 + (isUpstairs ? 1.4 : 0.0)).toFixed(1);
-      const setpoint = (hours >= 7 && hours <= 22) ? (hours >= 20 ? 74 : 72) : (hours >= 23 || hours < 6 ? 72 : 78);
-      const outdoorTemp = (72.0 + Math.sin((totalMinutes - 360) / 210) * 11.5).toFixed(1);
-      const isActive = (hours >= 1 && hours <= 2) || (hours >= 8 && hours <= 9) || (hours >= 12 && hours <= 13) || (hours >= 16 && hours <= 18) || (hours === 21);
+      let indoorTemp = fallbackIndoor;
+      let setpoint = fallbackSetpoint;
+      let outdoorTemp = fallbackOutdoor;
+      let isActive = false;
 
-      return { idx, totalMinutes, timeLabel, indoorTemp, setpoint, outdoorTemp, isActive, cx };
+      if (climateTimeline.length > 0) {
+        const cState = getStateAt(climateTimeline, pointTimeMs);
+        if (cState) {
+          if (cState.attributes) {
+            if (cState.attributes.current_temperature !== undefined && cState.attributes.current_temperature !== null) {
+              indoorTemp = parseFloat(cState.attributes.current_temperature);
+            }
+            if (cState.attributes.temperature !== undefined && cState.attributes.temperature !== null) {
+              setpoint = parseFloat(cState.attributes.temperature);
+            } else if (cState.attributes.target_temp_low !== undefined) {
+              setpoint = parseFloat(cState.attributes.target_temp_low);
+            }
+            const act = cState.attributes.hvac_action;
+            isActive = act === "cooling" || act === "heating";
+          }
+          if (!isActive && cState.state) {
+            isActive = cState.state === "cool" || cState.state === "heat";
+          }
+        }
+      }
+
+      if (outdoorTimeline.length > 0) {
+        const oState = getStateAt(outdoorTimeline, pointTimeMs);
+        if (oState) {
+          if (oState.state && !isNaN(parseFloat(oState.state))) {
+            outdoorTemp = parseFloat(oState.state);
+          } else if (oState.attributes && oState.attributes.temperature !== undefined) {
+            outdoorTemp = parseFloat(oState.attributes.temperature);
+          }
+        }
+      }
+
+      return { idx, pointTimeMs, timeLabel, indoorTemp: parseFloat(indoorTemp).toFixed(1), setpoint: parseFloat(setpoint), outdoorTemp: parseFloat(outdoorTemp).toFixed(1), isActive, cx };
     });
 
     // DYNAMIC AUTOFIT Y-AXIS BOUNDS CALCULATION
@@ -2718,7 +2855,13 @@ class PassableApplianceCard extends LitElement {
 
                           <!-- 24-Hour Timeline Plot SVG Canvas -->
                           <div style="position:relative; width:100%; aspect-ratio: 1.8 / 1;">
-                            <svg viewBox="0 0 340 180" style="width:100%; height:100%; overflow:visible;">
+                            <svg
+                              viewBox="0 0 340 180"
+                              style="width:100%; height:100%; overflow:visible; cursor:pointer;"
+                              @click=${(e) => this._handleGraphClick(e, timelineData)}
+                              @mousemove=${(e) => this._handleGraphDrag(e, timelineData)}
+                              @touchmove=${(e) => this._handleGraphTouchDrag(e, timelineData)}
+                            >
                               <!-- Horizontal Grid Lines & Dynamic Autofit Y-Axis Labels (°F) -->
                               <line x1="30" y1="20" x2="310" y2="20" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
                               <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.top}</text>
@@ -2800,7 +2943,8 @@ class PassableApplianceCard extends LitElement {
                                     y="20"
                                     width="${Math.max(3, 280 / Math.max(1, timelineData.length - 1))}"
                                     height="140"
-                                    fill="transparent"
+                                    fill="rgba(0,0,0,0.001)"
+                                    pointer-events="all"
                                     style="cursor:pointer;"
                                     @click=${() => this._selectTimelineChunk(pt.idx)}
                                   />
