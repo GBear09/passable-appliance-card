@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.0
+ * Version: 1.8.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -11,10 +11,10 @@
  *  3. Laundry Center (Vertical Stack + Knob/Screen Panel + Spinning SVG Drum + Select/Sensor Domain Editor)
  *  4. Navien Water Heater (SVG Chassis + Layer-Ordered Recirculation Loop Pipe + 40px Color Arrow Buttons + Centered SETPOINT + Pipe-Aligned Inlet/Outlet Badges + Theme Colored Interactive Timeline + Customizable Flush Guide)
  *  5. Smart Hose Timer (Nowrap Single-Line Header Title + Side-by-Side Battery Icon & % Chip + Exact Original Recirc-Button Text Style/Format Match + 24px Pill Rounded Next/Last Blocks + Ring Slider + Gear Drawer)
- *  6. HVAC Systems (100% Real Home Assistant Recorder History API Data + Rolling 24h Window to NOW + Dynamic Compressor Active Bands)
+ *  6. HVAC Systems (Properly Scope activeBands & xLabels to Eliminate ReferenceError + 100% Real Home Assistant Recorder History API Integration)
  */
 
-const CARD_VERSION = "1.8.0";
+const CARD_VERSION = "1.8.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2260,6 +2260,32 @@ class PassableApplianceCard extends LitElement {
       midLow: `${Math.round(minGridTemp + tempSpan * 0.25)}°`,
       bottom: `${minGridTemp}°`
     };
+
+    // Compute active compressor bands dynamically from real HA recorder history
+    let activeBands = [];
+    let currentBandStart = null;
+
+    timelineData.forEach((pt) => {
+      if (pt.isActive && currentBandStart === null) {
+        currentBandStart = pt.cx;
+      } else if (!pt.isActive && currentBandStart !== null) {
+        const bandWidth = Math.max(2, pt.cx - currentBandStart);
+        activeBands.push({ x: currentBandStart, width: bandWidth });
+        currentBandStart = null;
+      }
+    });
+
+    if (currentBandStart !== null) {
+      const lastPt = timelineData[timelineData.length - 1];
+      const bandWidth = Math.max(2, lastPt.cx - currentBandStart);
+      activeBands.push({ x: currentBandStart, width: bandWidth });
+    }
+
+    // Dynamic X-axis 24h rolling labels (7 timestamps across 24h)
+    const xLabels = Array.from({ length: 7 }, (_, i) => {
+      const idx = Math.min(timelineData.length - 1, Math.floor(i * (timelineData.length - 1) / 6));
+      return timelineData[idx];
+    });
 
     // Build exact SVG path strings directly from timelineData so lines and dots match 100%
     const indoorPathString = "M " + timelineData.map(pt => `${pt.cx.toFixed(1)} ${pt.indoorY.toFixed(1)}`).join(" L ");
