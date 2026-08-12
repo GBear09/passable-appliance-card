@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.9.2
+ * Version: 1.9.3
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.9.2";
+const CARD_VERSION = "1.9.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2545,10 +2545,10 @@ class PassableApplianceCard extends LitElement {
     const maxGridTemp = Math.ceil(rawMaxTemp + 2);
     const tempSpan = Math.max(1, maxGridTemp - minGridTemp);
 
-    // Y-coordinate mapper mapping [minGridTemp, maxGridTemp] -> [y=160, y=20]
+    // Y-coordinate mapper mapping [minGridTemp, maxGridTemp] -> [y=140, y=20]
     const calcTimelineY = (tempVal) => {
       const v = Math.max(minGridTemp, Math.min(maxGridTemp, parseFloat(tempVal) || minGridTemp));
-      return 160 - ((v - minGridTemp) / tempSpan) * 140;
+      return 140 - ((v - minGridTemp) / tempSpan) * 120;
     };
 
     // Apply calculated Y-coordinates to timelineData
@@ -2561,9 +2561,36 @@ class PassableApplianceCard extends LitElement {
 
     const activeHourData = timelineData[selectedChunkIdx] || timelineData[timelineData.length - 1];
 
+    // Calculate contiguous active compressor run duration for selected chunk
+    let activeRunRangeStr = "";
+    if (activeHourData && activeHourData.isActive && timelineData && timelineData.length > 0) {
+      let startIdx = selectedChunkIdx;
+      while (startIdx > 0 && timelineData[startIdx - 1] && timelineData[startIdx - 1].isActive) {
+        startIdx--;
+      }
+      let endIdx = selectedChunkIdx;
+      while (endIdx < timelineData.length - 1 && timelineData[endIdx + 1] && timelineData[endIdx + 1].isActive) {
+        endIdx++;
+      }
+      const startPt = timelineData[startIdx];
+      const endPt = timelineData[endIdx];
+      const count = (endIdx - startIdx + 1);
+      const durMins = count * stepMinutes;
+
+      const formatTimeShort = (labelStr) => {
+        if (!labelStr) return "";
+        const match = labelStr.match(/(\d+:\d+\s*(?:AM|PM))/i);
+        return match ? match[1] : labelStr;
+      };
+
+      const sStr = formatTimeShort(startPt.timeLabel);
+      const eStr = formatTimeShort(endPt.timeLabel);
+      activeRunRangeStr = (sStr === eStr) ? `${sStr} (${durMins}m)` : `${sStr} - ${eStr} (${durMins}m)`;
+    }
+
     // Smart non-blocking tooltip position calculation
-    const ttWidth = 126;
-    const ttHeight = 44;
+    const ttWidth = activeRunRangeStr ? 144 : 126;
+    const ttHeight = activeRunRangeStr ? 54 : 44;
     let ttX = activeHourData.cx > 170 ? activeHourData.cx - ttWidth - 10 : activeHourData.cx + 10;
     ttX = Math.max(10, Math.min(340 - ttWidth - 10, ttX));
 
@@ -2571,12 +2598,12 @@ class PassableApplianceCard extends LitElement {
     const maxLineY = Math.max(activeHourData.indoorY, activeHourData.setpointY, activeHourData.outdoorY);
 
     let ttY;
-    if (minLineY > 64) {
+    if (minLineY > (ttHeight + 15)) {
       ttY = Math.max(10, minLineY - ttHeight - 6);
-    } else if (maxLineY < 116) {
-      ttY = Math.min(160 - ttHeight, maxLineY + 10);
+    } else if (maxLineY < (140 - ttHeight - 6)) {
+      ttY = Math.min(140 - ttHeight, maxLineY + 6);
     } else {
-      ttY = activeHourData.indoorY > 90 ? 15 : 108;
+      ttY = activeHourData.indoorY > 80 ? 12 : 90;
     }
 
     // Dynamic Y-axis labels
@@ -2619,14 +2646,16 @@ class PassableApplianceCard extends LitElement {
     }
 
     const activeBandsPath = activeBands.map(b => 
-      `M ${b.x.toFixed(1)} 20 H ${(b.x + b.width).toFixed(1)} V 160 H ${b.x.toFixed(1)} Z`
+      `M ${b.x.toFixed(1)} 20 H ${(b.x + b.width).toFixed(1)} V 140 H ${b.x.toFixed(1)} Z`
     ).join(" ");
 
     // Dynamic X-axis 24h rolling labels (7 timestamps across 24h)
-    const xLabels = Array.from({ length: 7 }, (_, i) => {
-      const idx = Math.min(timelineData.length - 1, Math.floor(i * (timelineData.length - 1) / 6));
-      return timelineData[idx];
-    });
+    const xLabels = (timelineData && timelineData.length > 0)
+      ? Array.from({ length: 7 }, (_, i) => {
+          const idx = Math.min(timelineData.length - 1, Math.floor(i * (timelineData.length - 1) / 6));
+          return timelineData[idx];
+        }).filter(Boolean)
+      : [];
 
     // Build exact SVG path strings directly from timelineData so lines and dots match 100%
     const indoorPathString = "M " + timelineData.map(pt => `${pt.cx.toFixed(1)} ${pt.indoorY.toFixed(1)}`).join(" L ");
@@ -3039,166 +3068,140 @@ class PassableApplianceCard extends LitElement {
                             </svg>
                           </div>
                         `
-                      : (() => {
-                          let activeRunRangeStr = "";
-                          if (activeHourData && activeHourData.isActive && timelineData.length > 0) {
-                            let startIdx = selectedChunkIdx;
-                            while (startIdx > 0 && timelineData[startIdx - 1] && timelineData[startIdx - 1].isActive) {
-                              startIdx--;
-                            }
-                            let endIdx = selectedChunkIdx;
-                            while (endIdx < timelineData.length - 1 && timelineData[endIdx + 1] && timelineData[endIdx + 1].isActive) {
-                              endIdx++;
-                            }
-                            const startPt = timelineData[startIdx];
-                            const endPt = timelineData[endIdx];
-                            const count = (endIdx - startIdx + 1);
-                            const durMins = Math.max(stepMinutes, Math.round((count * 24 * 60) / timelineData.length));
-                            const formatTimeShort = (labelStr) => {
-                              if (!labelStr) return "";
-                              const match = labelStr.match(/(\d+:\d+\s*(?:AM|PM))/i);
-                              return match ? match[1] : labelStr;
-                            };
-                            const sStr = formatTimeShort(startPt.timeLabel);
-                            const eStr = formatTimeShort(endPt.timeLabel);
-                            activeRunRangeStr = sStr === eStr ? `${sStr} (${durMins}m)` : `${sStr} - ${eStr} (${durMins}m)`;
-                          }
-
-                          return html`
-                            <!-- MODE B: TODAY 24H HIGH-RESOLUTION INTERACTIVE TIMELINE PLOT -->
-                            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; font-family:sans-serif;">
-                              <div>
-                                <div style="font-size:1.4rem; font-weight:800; color:${isHeatingSeason ? '#ea580c' : '#3b82f6'}; line-height:1;">
-                                  ${isHeatingSeason ? liveHeatToday : liveCoolToday}<span style="font-size:0.9rem; font-weight:600;">h</span>
-                                </div>
-                                <div style="font-size:0.65rem; color:var(--secondary-text-color);">Today ${isHeatingSeason ? 'Heating' : 'Cooling'} (${activeHourData.timeLabel})</div>
+                      : html`
+                          <!-- MODE B: TODAY 24H HIGH-RESOLUTION INTERACTIVE TIMELINE PLOT -->
+                          <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; font-family:sans-serif;">
+                            <div>
+                              <div style="font-size:1.4rem; font-weight:800; color:${isHeatingSeason ? '#ea580c' : '#3b82f6'}; line-height:1;">
+                                ${isHeatingSeason ? liveHeatToday : liveCoolToday}<span style="font-size:0.9rem; font-weight:600;">h</span>
                               </div>
-                              <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; font-size:0.65rem; font-weight:600;">
-                                <span style="color:#ffffff; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:2px; background:#ffffff;"></span> Outdoor (${liveOutdoorTempStr}°F)</span>
-                                <span style="color:#eab308; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:2px; background:#eab308;"></span> Setpoint</span>
-                                <span style="color:#38bdf8; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:2px; background:#38bdf8;"></span> Indoor</span>
-                                <span style="color:${isHeatingSeason ? '#ea580c' : '#0284c7'}; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:6px; height:6px; background:${isHeatingSeason ? 'rgba(234,88,12,0.5)' : 'rgba(2,132,199,0.5)'}; border-radius:2px;"></span> Active</span>
-                              </div>
+                              <div style="font-size:0.65rem; color:var(--secondary-text-color);">Today ${isHeatingSeason ? 'Heating' : 'Cooling'} (${activeHourData.timeLabel})</div>
                             </div>
+                            <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; font-size:0.65rem; font-weight:600;">
+                              <span style="color:#ffffff; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:2px; background:#ffffff;"></span> Outdoor (${liveOutdoorTempStr}°F)</span>
+                              <span style="color:#eab308; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:2px; background:#eab308;"></span> Setpoint</span>
+                              <span style="color:#38bdf8; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:2px; background:#38bdf8;"></span> Indoor</span>
+                              <span style="color:${isHeatingSeason ? '#ea580c' : '#0284c7'}; display:flex; align-items:center; gap:3px;"><span style="display:inline-block; width:6px; height:6px; background:${isHeatingSeason ? 'rgba(234,88,12,0.5)' : 'rgba(2,132,199,0.5)'}; border-radius:2px;"></span> Active</span>
+                            </div>
+                          </div>
 
-                            <!-- 24-Hour Timeline Plot SVG Canvas -->
-                            <div style="position:relative; width:100%; aspect-ratio: 1.75 / 1; overflow:visible;">
-                              <svg
-                                viewBox="0 0 340 195"
-                                style="width:100%; height:100%; overflow:visible; cursor:pointer;"
-                                @click=${(e) => this._handleGraphClick(e, timelineData)}
-                                @mousemove=${(e) => this._handleGraphDrag(e, timelineData)}
-                                @touchmove=${(e) => this._handleGraphTouchDrag(e, timelineData)}
-                              >
-                                <!-- Horizontal Grid Lines & Dynamic Autofit Y-Axis Labels (°F) -->
-                                <line x1="30" y1="20" x2="310" y2="20" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                                <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.top}</text>
+                          <!-- 24-Hour Timeline Plot SVG Canvas -->
+                          <div style="position:relative; width:100%; aspect-ratio: 1.75 / 1; overflow:visible;">
+                            <svg
+                              viewBox="0 0 340 178"
+                              style="width:100%; height:100%; overflow:visible; cursor:pointer;"
+                              @click=${(e) => this._handleGraphClick(e, timelineData)}
+                              @mousemove=${(e) => this._handleGraphDrag(e, timelineData)}
+                              @touchmove=${(e) => this._handleGraphTouchDrag(e, timelineData)}
+                            >
+                              <!-- Horizontal Grid Lines & Dynamic Autofit Y-Axis Labels (°F) -->
+                              <line x1="30" y1="20" x2="310" y2="20" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
+                              <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.top}</text>
 
-                                <line x1="30" y1="55" x2="310" y2="55" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                                <text x="5" y="59" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.midHigh}</text>
+                              <line x1="30" y1="50" x2="310" y2="50" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
+                              <text x="5" y="54" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.midHigh}</text>
 
-                                <line x1="30" y1="90" x2="310" y2="90" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                                <text x="5" y="94" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.mid}</text>
+                              <line x1="30" y1="80" x2="310" y2="80" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
+                              <text x="5" y="84" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.mid}</text>
 
-                                <line x1="30" y1="125" x2="310" y2="125" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
-                                <text x="5" y="129" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.midLow}</text>
+                              <line x1="30" y1="110" x2="310" y2="110" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3"/>
+                              <text x="5" y="114" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.midLow}</text>
 
-                                <line x1="30" y1="160" x2="310" y2="160" stroke="rgba(255,255,255,0.3)"/>
-                                <text x="5" y="164" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.bottom}</text>
+                              <line x1="30" y1="140" x2="310" y2="140" stroke="rgba(255,255,255,0.3)"/>
+                              <text x="5" y="144" fill="#a1a1aa" font-size="10" font-weight="600">${yGridLabels.bottom}</text>
 
-                                <!-- Shaded Active HVAC Compressor Bands (Real HA History Data) -->
-                                <path
-                                  d="${activeBandsPath}"
-                                  fill="${isHeatingSeason ? 'rgba(249,115,22,0.30)' : 'rgba(56,189,248,0.30)'}"
-                                />
+                              <!-- Shaded Active HVAC Compressor Bands (Real HA History Data) -->
+                              <path
+                                d="${activeBandsPath}"
+                                fill="${isHeatingSeason ? 'rgba(249,115,22,0.30)' : 'rgba(56,189,248,0.30)'}"
+                              />
 
-                                <!-- Vertical Hairline Indicator Line for Selected Hour -->
-                                <line x1="${activeHourData.cx}" y1="20" x2="${activeHourData.cx}" y2="160" stroke="rgba(255,255,255,0.4)" stroke-dasharray="2 2"/>
+                              <!-- Vertical Hairline Indicator Line for Selected Hour -->
+                              <line x1="${activeHourData.cx}" y1="20" x2="${activeHourData.cx}" y2="140" stroke="rgba(255,255,255,0.4)" stroke-dasharray="2 2"/>
 
-                                <!-- White Dashed Line: Outdoor Temperature Curve -->
-                                <path
-                                  d="${outdoorPathString}"
-                                  fill="none"
-                                  stroke="#ffffff"
-                                  stroke-width="2"
-                                  stroke-dasharray="4 3"
-                                  stroke-linecap="round"
-                                />
+                              <!-- White Dashed Line: Outdoor Temperature Curve -->
+                              <path
+                                d="${outdoorPathString}"
+                                fill="none"
+                                stroke="#ffffff"
+                                stroke-width="2"
+                                stroke-dasharray="4 3"
+                                stroke-linecap="round"
+                              />
 
-                                <!-- Yellow/Orange Step Line: Target Setpoint -->
-                                <path
-                                  d="${setpointPathString}"
-                                  fill="none"
-                                  stroke="#eab308"
-                                  stroke-width="2.2"
-                                />
+                              <!-- Yellow/Orange Step Line: Target Setpoint -->
+                              <path
+                                d="${setpointPathString}"
+                                fill="none"
+                                stroke="#eab308"
+                                stroke-width="2.2"
+                              />
 
-                                <!-- Blue Line: Indoor Temperature Curve -->
-                                <path
-                                  d="${indoorPathString}"
-                                  fill="none"
-                                  stroke="#38bdf8"
-                                  stroke-width="2.5"
-                                  stroke-linecap="round"
-                                />
+                              <!-- Blue Line: Indoor Temperature Curve -->
+                              <path
+                                d="${indoorPathString}"
+                                fill="none"
+                                stroke="#38bdf8"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                              />
 
-                                <!-- Glowing Selection Point Markers for Active Chunk -->
-                                <circle cx="${activeHourData.cx}" cy="${activeHourData.outdoorY}" r="4" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
-                                <circle cx="${activeHourData.cx}" cy="${activeHourData.setpointY}" r="4" fill="#eab308" stroke="#000000" stroke-width="1.5"/>
-                                <circle cx="${activeHourData.cx}" cy="${activeHourData.indoorY}" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
+                              <!-- Glowing Selection Point Markers for Active Chunk -->
+                              <circle cx="${activeHourData.cx}" cy="${activeHourData.outdoorY}" r="4" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+                              <circle cx="${activeHourData.cx}" cy="${activeHourData.setpointY}" r="4" fill="#eab308" stroke="#000000" stroke-width="1.5"/>
+                              <circle cx="${activeHourData.cx}" cy="${activeHourData.indoorY}" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
 
-                                <!-- Dynamic Smart Non-Blocking Tooltip Annotation Badge -->
-                                <g transform="translate(${ttX}, ${ttY})">
-                                  <rect x="0" y="0" width="${activeRunRangeStr ? 144 : 126}" height="${activeRunRangeStr ? 52 : 44}" rx="6" fill="rgba(15,23,42,0.95)" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
-                                  <text x="7" y="13" fill="#ffffff" font-size="9" font-weight="700">${activeHourData.timeLabel}</text>
-                                  <text x="${activeRunRangeStr ? 137 : 119}" y="13" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="end">In: ${activeHourData.indoorTemp}°F</text>
-                                  
-                                  <text x="7" y="26" fill="${activeHourData.isActive ? (isHeatingSeason ? '#f97316' : '#38bdf8') : '#a1a1aa'}" font-size="8" font-weight="600">
-                                    ${activeHourData.isActive ? (isHeatingSeason ? 'Heating Active' : 'Cooling Active') : 'Idle'}
+                              <!-- Dynamic Smart Non-Blocking Tooltip Annotation Badge -->
+                              <g transform="translate(${ttX}, ${ttY})">
+                                <rect x="0" y="0" width="${activeRunRangeStr ? 144 : 126}" height="${activeRunRangeStr ? 52 : 44}" rx="6" fill="rgba(15,23,42,0.95)" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
+                                <text x="7" y="13" fill="#ffffff" font-size="9" font-weight="700">${activeHourData.timeLabel}</text>
+                                <text x="${activeRunRangeStr ? 137 : 119}" y="13" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="end">In: ${activeHourData.indoorTemp}°F</text>
+                                
+                                <text x="7" y="26" fill="${activeHourData.isActive ? (isHeatingSeason ? '#f97316' : '#38bdf8') : '#a1a1aa'}" font-size="8" font-weight="600">
+                                  ${activeHourData.isActive ? (isHeatingSeason ? 'Heating Active' : 'Cooling Active') : 'Idle'}
+                                </text>
+                                <text x="${activeRunRangeStr ? 137 : 119}" y="26" fill="#eab308" font-size="8.5" font-weight="800" text-anchor="end">Set: ${activeHourData.setpoint}°F</text>
+                                
+                                <text x="7" y="37" fill="#a1a1aa" font-size="8" font-weight="500">Out: ${activeHourData.outdoorTemp}°F</text>
+                                ${activeRunRangeStr ? html`<text x="7" y="47" fill="#38bdf8" font-size="7.5" font-weight="700">Ran ${activeRunRangeStr}</text>` : ''}
+                              </g>
+
+                              <!-- Interactive Resolution Touch Targets -->
+                              ${timelineData.map(
+                                (pt) => html`
+                                  <rect
+                                    x="${pt.cx - (280 / Math.max(1, timelineData.length - 1)) / 2}"
+                                    y="20"
+                                    width="${Math.max(3, 280 / Math.max(1, timelineData.length - 1))}"
+                                    height="120"
+                                    fill="rgba(0,0,0,0.001)"
+                                    pointer-events="all"
+                                    style="cursor:pointer;"
+                                    @click=${() => this._selectTimelineChunk(pt.idx)}
+                                  />
+                                `
+                              )}
+
+                              <!-- X-Axis Dynamic 24h Timestamps -->
+                              ${(xLabels || []).map(
+                                (xl) => xl ? html`
+                                  <text
+                                    x="${xl.cx}"
+                                    y="162"
+                                    fill="${selectedChunkIdx === xl.idx ? '#ffffff' : '#a1a1aa'}"
+                                    font-size="8.5"
+                                    font-weight="${selectedChunkIdx === xl.idx ? '700' : '400'}"
+                                    text-anchor="middle"
+                                    style="cursor:pointer;"
+                                    @click=${() => this._selectTimelineChunk(xl.idx)}
+                                  >
+                                    ${xl.timeLabel}
                                   </text>
-                                  <text x="${activeRunRangeStr ? 137 : 119}" y="26" fill="#eab308" font-size="8.5" font-weight="800" text-anchor="end">Set: ${activeHourData.setpoint}°F</text>
-                                  
-                                  <text x="7" y="37" fill="#a1a1aa" font-size="8" font-weight="500">Out: ${activeHourData.outdoorTemp}°F</text>
-                                  ${activeRunRangeStr ? html`<text x="7" y="47" fill="#38bdf8" font-size="7" font-weight="700">Ran ${activeRunRangeStr}</text>` : ''}
-                                </g>
-
-                                <!-- Interactive Resolution Touch Targets -->
-                                ${timelineData.map(
-                                  (pt) => html`
-                                    <rect
-                                      x="${pt.cx - (280 / Math.max(1, timelineData.length - 1)) / 2}"
-                                      y="20"
-                                      width="${Math.max(3, 280 / Math.max(1, timelineData.length - 1))}"
-                                      height="140"
-                                      fill="rgba(0,0,0,0.001)"
-                                      pointer-events="all"
-                                      style="cursor:pointer;"
-                                      @click=${() => this._selectTimelineChunk(pt.idx)}
-                                    />
-                                  `
-                                )}
-
-                                <!-- X-Axis Dynamic 24h Timestamps -->
-                                ${xLabels.map(
-                                  (xl) => html`
-                                    <text
-                                      x="${xl.cx}"
-                                      y="180"
-                                      fill="${selectedChunkIdx === xl.idx ? '#ffffff' : '#a1a1aa'}"
-                                      font-size="8.5"
-                                      font-weight="${selectedChunkIdx === xl.idx ? '700' : '400'}"
-                                      text-anchor="middle"
-                                      style="cursor:pointer;"
-                                      @click=${() => this._selectTimelineChunk(xl.idx)}
-                                    >
-                                      ${xl.timeLabel}
-                                    </text>
-                                  `
-                                )}
-                              </svg>
-                            </div>
-                          `;
-                        })()}
+                                ` : ''
+                              )}
+                            </svg>
+                          </div>
+                        `}
                   </div>
                 `
               : html`
