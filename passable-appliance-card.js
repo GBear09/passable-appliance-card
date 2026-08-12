@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.9.1
+ * Version: 1.9.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.9.1";
+const CARD_VERSION = "1.9.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -2197,21 +2197,21 @@ class PassableApplianceCard extends LitElement {
         <div style="display:flex; gap:6px; align-items:center;">
           ${hasHeat
             ? html`
-                <div class="step-controller-pill" style="padding:2px 6px;">
-                  <ha-icon icon="mdi:fire" style="--mdc-icon-size:12px; color:#f97316; margin-right:2px;"></ha-icon>
-                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(heatEntityId, -1)}>-</button>
-                  <span class="pill-value" style="font-size:0.8rem; min-width:24px; text-align:center;">${Math.round(parseFloat(heatObj.state))}°</span>
-                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(heatEntityId, 1)}>+</button>
+                <div class="step-controller-pill" style="padding:2px 8px;">
+                  <ha-icon icon="mdi:fire" style="--mdc-icon-size:13px; color:#f97316; margin-right:2px;"></ha-icon>
+                  <button class="pill-btn" style="padding:0 5px; font-size:1.1rem;" @click=${() => this._adjustNumberEntity(heatEntityId, -1)}>-</button>
+                  <span class="pill-value" style="font-size:1rem; font-weight:700; min-width:28px; text-align:center; color:#ffffff;">${Math.round(parseFloat(heatObj.state))}°</span>
+                  <button class="pill-btn" style="padding:0 5px; font-size:1.1rem;" @click=${() => this._adjustNumberEntity(heatEntityId, 1)}>+</button>
                 </div>
               `
             : ""}
           ${hasCool
             ? html`
-                <div class="step-controller-pill" style="padding:2px 6px;">
-                  <ha-icon icon="mdi:snowflake" style="--mdc-icon-size:12px; color:#38bdf8; margin-right:2px;"></ha-icon>
-                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(coolEntityId, -1)}>-</button>
-                  <span class="pill-value" style="font-size:0.8rem; min-width:24px; text-align:center;">${Math.round(parseFloat(coolObj.state))}°</span>
-                  <button class="pill-btn" style="padding:0 4px;" @click=${() => this._adjustNumberEntity(coolEntityId, 1)}>+</button>
+                <div class="step-controller-pill" style="padding:2px 8px;">
+                  <ha-icon icon="mdi:snowflake" style="--mdc-icon-size:13px; color:#38bdf8; margin-right:2px;"></ha-icon>
+                  <button class="pill-btn" style="padding:0 5px; font-size:1.1rem;" @click=${() => this._adjustNumberEntity(coolEntityId, -1)}>-</button>
+                  <span class="pill-value" style="font-size:1rem; font-weight:700; min-width:28px; text-align:center; color:#ffffff;">${Math.round(parseFloat(coolObj.state))}°</span>
+                  <button class="pill-btn" style="padding:0 5px; font-size:1.1rem;" @click=${() => this._adjustNumberEntity(coolEntityId, 1)}>+</button>
                 </div>
               `
             : ""}
@@ -2918,7 +2918,7 @@ class PassableApplianceCard extends LitElement {
                     <div style="display:flex; justify-content:center; gap:4px; background:rgba(0,0,0,0.4); padding:3px; border-radius:10px; margin:0 auto 8px auto; width:fit-content;">
                       <button
                         class="hvac-tab-btn ${graphMode === 'multiday' ? 'active' : ''}"
-                        style="padding:4px 12px; font-size:0.75rem;"
+                        style="padding:4px 10px; font-size:0.72rem; white-space:nowrap;"
                         @click=${() => { this._hvacGraphMode = 'multiday'; this.requestUpdate(); }}
                       >
                         <ha-icon icon="mdi:chart-bar" style="--mdc-icon-size:13px; margin-right:4px;"></ha-icon>
@@ -2926,7 +2926,7 @@ class PassableApplianceCard extends LitElement {
                       </button>
                       <button
                         class="hvac-tab-btn ${graphMode === 'timeline' ? 'active' : ''}"
-                        style="padding:4px 12px; font-size:0.75rem;"
+                        style="padding:4px 10px; font-size:0.72rem; white-space:nowrap;"
                         @click=${() => { this._hvacGraphMode = 'timeline'; this.requestUpdate(); }}
                       >
                         <ha-icon icon="mdi:chart-timeline-variant" style="--mdc-icon-size:13px; margin-right:4px;"></ha-icon>
@@ -2936,24 +2936,26 @@ class PassableApplianceCard extends LitElement {
 
                     ${graphMode === 'timeline'
                       ? html`
-                          <!-- Resolution Picker (5m, 15m, 30m, 1h) - Centered -->
+                          <!-- Resolution Selector (5m, 15m, 30m, 1h) - Dark Pill Wrapper -->
                           <div style="display:flex; justify-content:center; align-items:center; gap:4px; margin-bottom:8px;">
-                            <span style="font-size:0.65rem; color:var(--secondary-text-color); font-weight:700;">Res:</span>
-                            ${[5, 15, 30, 60].map(
-                              (r) => html`
-                                <button
-                                  class="hvac-tab-btn ${stepMinutes === r ? 'active' : ''}"
-                                  style="padding:2px 6px; font-size:0.65rem; border-radius:6px;"
-                                  @click=${() => {
-                                    this._hvacTimelineRes = r;
-                                    this._selectedHvacChunkIndex = null;
-                                    this.requestUpdate();
-                                  }}
-                                >
-                                  ${r === 60 ? '1h' : r + 'm'}
-                                </button>
-                              `
-                            )}
+                            <span style="font-size:0.65rem; color:var(--secondary-text-color); font-weight:700; margin-right:2px;">Res:</span>
+                            <div style="display:flex; gap:3px; background:rgba(0,0,0,0.4); padding:3px; border-radius:10px;">
+                              ${[5, 15, 30, 60].map(
+                                (r) => html`
+                                  <button
+                                    class="hvac-tab-btn ${stepMinutes === r ? 'active' : ''}"
+                                    style="padding:3px 8px; font-size:0.65rem; border-radius:7px; white-space:nowrap;"
+                                    @click=${() => {
+                                      this._hvacTimelineRes = r;
+                                      this._selectedHvacChunkIndex = null;
+                                      this.requestUpdate();
+                                    }}
+                                  >
+                                    ${r === 60 ? '1h' : r + 'm'}
+                                  </button>
+                                `
+                              )}
+                            </div>
                           </div>
                         `
                       : ''}
@@ -2977,8 +2979,8 @@ class PassableApplianceCard extends LitElement {
                           </div>
 
                           <!-- Combined Bar + Curve Line SVG Canvas -->
-                          <div style="position:relative; width:100%; aspect-ratio: 1.9 / 1;">
-                            <svg viewBox="0 0 340 180" style="width:100%; height:100%; overflow:visible;">
+                          <div style="position:relative; width:100%; aspect-ratio: 1.75 / 1; overflow:visible;">
+                            <svg viewBox="0 0 340 195" style="width:100%; height:100%; overflow:visible;">
                               <!-- Horizontal Grid Lines & Y-Axis Labels -->
                               <line x1="30" y1="20" x2="310" y2="20" stroke="rgba(255,255,255,0.15)" stroke-dasharray="3 3"/>
                               <text x="5" y="24" fill="#a1a1aa" font-size="10" font-weight="600">6.0</text>
@@ -3039,24 +3041,27 @@ class PassableApplianceCard extends LitElement {
                         `
                       : (() => {
                           let activeRunRangeStr = "";
-                          if (activeHourData.isActive && timelineData.length > 0) {
+                          if (activeHourData && activeHourData.isActive && timelineData.length > 0) {
                             let startIdx = selectedChunkIdx;
-                            while (startIdx > 0 && timelineData[startIdx - 1].isActive) {
+                            while (startIdx > 0 && timelineData[startIdx - 1] && timelineData[startIdx - 1].isActive) {
                               startIdx--;
                             }
                             let endIdx = selectedChunkIdx;
-                            while (endIdx < timelineData.length - 1 && timelineData[endIdx + 1].isActive) {
+                            while (endIdx < timelineData.length - 1 && timelineData[endIdx + 1] && timelineData[endIdx + 1].isActive) {
                               endIdx++;
                             }
                             const startPt = timelineData[startIdx];
                             const endPt = timelineData[endIdx];
-                            const durMins = Math.max(stepMinutes, Math.round(((endIdx - startIdx + 1) * 24 * 60) / timelineData.length));
+                            const count = (endIdx - startIdx + 1);
+                            const durMins = Math.max(stepMinutes, Math.round((count * 24 * 60) / timelineData.length));
                             const formatTimeShort = (labelStr) => {
                               if (!labelStr) return "";
-                              const parts = labelStr.split(" ");
-                              return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : labelStr;
+                              const match = labelStr.match(/(\d+:\d+\s*(?:AM|PM))/i);
+                              return match ? match[1] : labelStr;
                             };
-                            activeRunRangeStr = `${formatTimeShort(startPt.timeLabel)} - ${formatTimeShort(endPt.timeLabel)} (${durMins}m)`;
+                            const sStr = formatTimeShort(startPt.timeLabel);
+                            const eStr = formatTimeShort(endPt.timeLabel);
+                            activeRunRangeStr = sStr === eStr ? `${sStr} (${durMins}m)` : `${sStr} - ${eStr} (${durMins}m)`;
                           }
 
                           return html`
@@ -3077,9 +3082,9 @@ class PassableApplianceCard extends LitElement {
                             </div>
 
                             <!-- 24-Hour Timeline Plot SVG Canvas -->
-                            <div style="position:relative; width:100%; aspect-ratio: 1.9 / 1;">
+                            <div style="position:relative; width:100%; aspect-ratio: 1.75 / 1; overflow:visible;">
                               <svg
-                                viewBox="0 0 340 180"
+                                viewBox="0 0 340 195"
                                 style="width:100%; height:100%; overflow:visible; cursor:pointer;"
                                 @click=${(e) => this._handleGraphClick(e, timelineData)}
                                 @mousemove=${(e) => this._handleGraphDrag(e, timelineData)}
@@ -3144,14 +3149,14 @@ class PassableApplianceCard extends LitElement {
 
                                 <!-- Dynamic Smart Non-Blocking Tooltip Annotation Badge -->
                                 <g transform="translate(${ttX}, ${ttY})">
-                                  <rect x="0" y="0" width="${activeRunRangeStr ? 138 : 126}" height="${activeRunRangeStr ? 52 : 44}" rx="6" fill="rgba(15,23,42,0.95)" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
+                                  <rect x="0" y="0" width="${activeRunRangeStr ? 144 : 126}" height="${activeRunRangeStr ? 52 : 44}" rx="6" fill="rgba(15,23,42,0.95)" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
                                   <text x="7" y="13" fill="#ffffff" font-size="9" font-weight="700">${activeHourData.timeLabel}</text>
-                                  <text x="${activeRunRangeStr ? 131 : 119}" y="13" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="end">In: ${activeHourData.indoorTemp}°F</text>
+                                  <text x="${activeRunRangeStr ? 137 : 119}" y="13" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="end">In: ${activeHourData.indoorTemp}°F</text>
                                   
                                   <text x="7" y="26" fill="${activeHourData.isActive ? (isHeatingSeason ? '#f97316' : '#38bdf8') : '#a1a1aa'}" font-size="8" font-weight="600">
                                     ${activeHourData.isActive ? (isHeatingSeason ? 'Heating Active' : 'Cooling Active') : 'Idle'}
                                   </text>
-                                  <text x="${activeRunRangeStr ? 131 : 119}" y="26" fill="#eab308" font-size="8.5" font-weight="800" text-anchor="end">Set: ${activeHourData.setpoint}°F</text>
+                                  <text x="${activeRunRangeStr ? 137 : 119}" y="26" fill="#eab308" font-size="8.5" font-weight="800" text-anchor="end">Set: ${activeHourData.setpoint}°F</text>
                                   
                                   <text x="7" y="37" fill="#a1a1aa" font-size="8" font-weight="500">Out: ${activeHourData.outdoorTemp}°F</text>
                                   ${activeRunRangeStr ? html`<text x="7" y="47" fill="#38bdf8" font-size="7" font-weight="700">Ran ${activeRunRangeStr}</text>` : ''}
@@ -3178,9 +3183,9 @@ class PassableApplianceCard extends LitElement {
                                   (xl) => html`
                                     <text
                                       x="${xl.cx}"
-                                      y="176"
+                                      y="180"
                                       fill="${selectedChunkIdx === xl.idx ? '#ffffff' : '#a1a1aa'}"
-                                      font-size="8"
+                                      font-size="8.5"
                                       font-weight="${selectedChunkIdx === xl.idx ? '700' : '400'}"
                                       text-anchor="middle"
                                       style="cursor:pointer;"
@@ -3514,35 +3519,35 @@ class PassableApplianceCard extends LitElement {
       /* UNIFORM POPUP STYLES & BOTTOM SHEET */
       .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease; }
       .popup-overlay.visible { opacity: 1; visibility: visible; }
-      .popup-content { background-color: var(--ha-card-background, var(--card-background-color, white)); padding: 20px 24px 24px; border-radius: 24px; width: 90%; max-width: 450px; max-height: 90vh; overflow-y: auto; color: var(--primary-text-color); display: flex; flex-direction: column; gap: 16px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.3s ease, transform 0.4s ease; }
+      .popup-content { background-color: var(--ha-card-background, var(--card-background-color, white)); padding: 14px 16px 18px; border-radius: 20px; width: 92%; max-width: 440px; max-height: 88vh; overflow-y: auto; color: var(--primary-text-color); display: flex; flex-direction: column; gap: 8px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.3s ease, transform 0.4s ease; }
       .popup-content.visible { opacity: 1; transform: translateY(0) scale(1); }
       .drag-handle { display: none; }
       
       .popup-header {
-        display: flex; align-items: center; justify-content: flex-start; gap: 14px; width: 100%;
-        padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%;
+        padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
       }
       .popup-header h3 {
-        margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--primary-text-color); letter-spacing: 0.01em;
+        margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--primary-text-color); letter-spacing: 0.01em;
       }
       .close-button {
         background: none; border: none; padding: 4px; cursor: pointer; color: var(--primary-text-color);
         display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background-color 0.2s;
       }
       .close-button:hover { background-color: rgba(255, 255, 255, 0.1); }
-      .close-button ha-icon { --mdc-icon-size: 22px; }
+      .close-button ha-icon { --mdc-icon-size: 20px; }
 
-      .control-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; }
-      .control-label-group { display: flex; align-items: center; gap: 12px; color: var(--primary-text-color); }
-      .control-label-group ha-icon { --mdc-icon-size: 22px; color: var(--secondary-text-color, #a1a1aa); }
-      .control-label { font-size: 1rem; font-weight: 500; color: var(--primary-text-color); }
+      .control-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 34px; margin: 2px 0; }
+      .control-label-group { display: flex; align-items: center; gap: 10px; color: var(--primary-text-color); }
+      .control-label-group ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color, #a1a1aa); }
+      .control-label { font-size: 0.95rem; font-weight: 500; color: var(--primary-text-color); }
       .popup-switch { margin-left: auto; }
       .control-value { margin-left: auto; font-weight: 600; font-size: 0.95rem; }
 
       .floating-cancel-button { background-color: var(--error-color, #ef4444); color: white; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 500; cursor: pointer; }
       .preset-buttons { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; }
       .preset-button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; background-color: rgba(128, 128, 128, 0.15); color: var(--primary-text-color); border: none; border-radius: 12px; padding: 12px 8px; font-weight: 500; font-size: 0.9em; cursor: pointer; }
-      .divider { border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); margin: 16px 0 12px 0; width: 100%; }
+      .divider { border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); margin: 4px 0; width: 100%; }
 
       /* FLUSH GUIDE MODAL */
       .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000; display: flex; justify-content: center; align-items: flex-end; backdrop-filter: blur(5px); }
