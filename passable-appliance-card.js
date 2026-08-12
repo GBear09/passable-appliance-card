@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.9.3
+ * Version: 1.9.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,14 +14,20 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.9.3";
+const CARD_VERSION = "1.9.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
 );
 const html = LitElement.prototype.html;
 const css = LitElement.prototype.css;
-const svg = LitElement.prototype.svg || html;
+const svg = LitElement.prototype.svg || ((strings, ...values) => {
+  const result = html(strings, ...values);
+  if (result && typeof result === "object") {
+    return Object.assign({}, result, { _$litType$: 2, type: "svg" });
+  }
+  return result;
+});
 
 console.info(
   `%c PASSABLE-APPLIANCE-CARD %c v${CARD_VERSION} IS LOADED `,
@@ -2583,9 +2589,16 @@ class PassableApplianceCard extends LitElement {
         return match ? match[1] : labelStr;
       };
 
+      let durStr = `${durMins}m`;
+      if (durMins >= 60) {
+        const hrs = Math.floor(durMins / 60);
+        const mins = durMins % 60;
+        durStr = mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+      }
+
       const sStr = formatTimeShort(startPt.timeLabel);
       const eStr = formatTimeShort(endPt.timeLabel);
-      activeRunRangeStr = (sStr === eStr) ? `${sStr} (${durMins}m)` : `${sStr} - ${eStr} (${durMins}m)`;
+      activeRunRangeStr = (sStr === eStr) ? `${sStr} (${durStr})` : `${sStr} - ${eStr} (${durStr})`;
     }
 
     // Smart non-blocking tooltip position calculation
@@ -3163,12 +3176,12 @@ class PassableApplianceCard extends LitElement {
                                 <text x="${activeRunRangeStr ? 137 : 119}" y="26" fill="#eab308" font-size="8.5" font-weight="800" text-anchor="end">Set: ${activeHourData.setpoint}°F</text>
                                 
                                 <text x="7" y="37" fill="#a1a1aa" font-size="8" font-weight="500">Out: ${activeHourData.outdoorTemp}°F</text>
-                                ${activeRunRangeStr ? html`<text x="7" y="47" fill="#38bdf8" font-size="7.5" font-weight="700">Ran ${activeRunRangeStr}</text>` : ''}
+                                ${activeRunRangeStr ? svg`<text x="7" y="47" fill="#38bdf8" font-size="7.5" font-weight="700">Ran ${activeRunRangeStr}</text>` : ''}
                               </g>
 
                               <!-- Interactive Resolution Touch Targets -->
                               ${timelineData.map(
-                                (pt) => html`
+                                (pt) => svg`
                                   <rect
                                     x="${pt.cx - (280 / Math.max(1, timelineData.length - 1)) / 2}"
                                     y="20"
@@ -3184,7 +3197,7 @@ class PassableApplianceCard extends LitElement {
 
                               <!-- X-Axis Dynamic 24h Timestamps -->
                               ${(xLabels || []).map(
-                                (xl) => xl ? html`
+                                (xl) => xl ? svg`
                                   <text
                                     x="${xl.cx}"
                                     y="162"
