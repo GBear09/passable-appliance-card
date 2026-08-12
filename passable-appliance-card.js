@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.8
+ * Version: 1.8.9
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.8.8";
+const CARD_VERSION = "1.8.9";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -502,7 +502,6 @@ class PassableApplianceCard extends LitElement {
     const c = this.config;
     const powerEntity = this._getPowerEntity("refrigerator");
     const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
-    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
 
     const fridgeControl = this._getEntity(c.fridge_control);
     const freezerControl = this._getEntity(c.freezer_control);
@@ -517,6 +516,9 @@ class PassableApplianceCard extends LitElement {
 
     const isOpen = doorStatus.state === "Fridge Open" || doorStatus.state === "Freezer Open" || doorStatus.state === "open" || doorStatus.state === "on";
     const isHeating = hotWaterStatus.state === "Heating";
+    const isWorking = isOpen || isHeating;
+
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false") && !isWorking;
 
     let chipLabel = "NORMAL";
     let chipClass = "idle";
@@ -721,7 +723,6 @@ class PassableApplianceCard extends LitElement {
     const c = this.config;
     const powerEntity = this._getPowerEntity("induction_range");
     const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
-    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
 
     const ovenConfig = c.oven || {
       upper_control: c.upper_control,
@@ -761,6 +762,9 @@ class PassableApplianceCard extends LitElement {
 
     const isUpperOn = upperOvenState.state !== "Off" && upperOvenState.state !== "unavailable";
     const isLowerOn = lowerOvenState.state !== "Off" && lowerOvenState.state !== "unavailable";
+
+    const isRangeActive = isAnyBurnerOn || isUpperOn || isLowerOn;
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false") && !isRangeActive;
 
     const syncFront = this._getEntity(cooktopConfig.sync_entities?.left_front);
     const isSynced = syncFront.state === "on" || syncFront.state === "true";
@@ -930,8 +934,6 @@ class PassableApplianceCard extends LitElement {
 
     const washerPowerState = washerPowerEntity ? this._getEntity(washerPowerEntity).state : null;
     const dryerPowerState = dryerPowerEntity ? this._getEntity(dryerPowerEntity).state : null;
-    const isWasherPowerOff = washerPowerState === "off" || washerPowerState === "false";
-    const isDryerPowerOff = dryerPowerState === "off" || dryerPowerState === "false";
 
     const washerConfig = c.washer || {
       current_status: c.washer_status,
@@ -957,8 +959,26 @@ class PassableApplianceCard extends LitElement {
     };
 
     const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
-    const isWasherActive = !isWasherPowerOff && activeStates.includes((washerEntities.status.state || "").toLowerCase());
-    const isDryerActive = !isDryerPowerOff && activeStates.includes((dryerEntities.status.state || "").toLowerCase());
+    const inactiveStates = ["off", "power off", "idle", "standby", "unavailable", "unknown", ""];
+
+    const washerStatusState = (washerEntities.status.state || "").toLowerCase().replace("_", " ");
+    const washerOpState = (washerEntities.operation.state || "").toLowerCase().replace("_", " ");
+    const dryerStatusState = (dryerEntities.status.state || "").toLowerCase().replace("_", " ");
+    const dryerOpState = (dryerEntities.operation.state || "").toLowerCase().replace("_", " ");
+
+    const isWasherStateActive = (washerEntities.status.state && !inactiveStates.includes(washerStatusState)) ||
+                                (washerEntities.operation.state && !inactiveStates.includes(washerOpState)) ||
+                                activeStates.includes(washerStatusState) || activeStates.includes(washerOpState);
+
+    const isDryerStateActive = (dryerEntities.status.state && !inactiveStates.includes(dryerStatusState)) ||
+                               (dryerEntities.operation.state && !inactiveStates.includes(dryerOpState)) ||
+                               activeStates.includes(dryerStatusState) || activeStates.includes(dryerOpState);
+
+    const isWasherPowerOff = (washerPowerState === "off" || washerPowerState === "false") && !isWasherStateActive;
+    const isDryerPowerOff = (dryerPowerState === "off" || dryerPowerState === "false") && !isDryerStateActive;
+
+    const isWasherActive = isWasherStateActive;
+    const isDryerActive = isDryerStateActive;
 
     let chipLabel = "IDLE";
     let chipClass = "idle";
@@ -1024,13 +1044,20 @@ class PassableApplianceCard extends LitElement {
 
   _renderLaundryUnit(name, icon, entities, powerEntity = null) {
     const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
-    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
 
     const status = (entities.status.state || "off").toLowerCase().replace("_", " ");
+    const op = (entities.operation.state || "off").toLowerCase().replace("_", " ");
     const activeStates = ["running", "wash", "rinse", "rinsing", "spin", "spinning", "drying", "cooling", "detecting"];
-    const isActive = !isPowerOff && activeStates.includes(status);
+    const inactiveStates = ["off", "power off", "idle", "standby", "unavailable", "unknown", ""];
+
+    const isStateActive = (entities.status.state && !inactiveStates.includes(status)) ||
+                          (entities.operation.state && !inactiveStates.includes(op)) ||
+                          activeStates.includes(status) || activeStates.includes(op);
+
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false") && !isStateActive;
+    const isActive = isStateActive;
     const machineType = name.toLowerCase();
-    const displayStatus = isPowerOff ? "Power Off" : (status === "power off" ? "Off" : status);
+    const displayStatus = isPowerOff ? "Power Off" : (status === "power off" ? "Off" : (entities.status.state || "off"));
     const remainingTime = this._formatRemainingTime(entities.remaining_time.state);
 
     return html`
@@ -1081,7 +1108,6 @@ class PassableApplianceCard extends LitElement {
     const c = this.config;
     const powerEntity = this._getPowerEntity("water_heater");
     const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
-    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
 
     const mainEntityId = c.entity || "water_heater.water_heater";
     const stateObj = this.hass.states[mainEntityId] || { state: "unavailable", attributes: {} };
@@ -1098,9 +1124,11 @@ class PassableApplianceCard extends LitElement {
     const flowRate = parseFloat(flowData.state) || 0;
     const gasUsage = parseFloat(gasData.state) || 0;
 
-    // Heating condition: ONLY when heating or when water flow > 0 GPM
-    const isHeating = !isPowerOff && (stateObj.state === "heating" || stateObj.state === "on" || flowRate > 0);
-    const isRecircActive = !isPowerOff && (recircSwitch.state === "on" || recircSwitch.state === "true");
+    const isHeating = stateObj.state === "heating" || stateObj.state === "on" || flowRate > 0;
+    const isRecircActive = recircSwitch.state === "on" || recircSwitch.state === "true";
+    const isWaterHeaterWorking = isHeating || isRecircActive || gasUsage > 0;
+
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false") && !isWaterHeaterWorking;
     const animateMainLines = isHeating || isRecircActive;
 
     const targetTemp = parseFloat(attributes.temperature) || 125;
@@ -1461,7 +1489,6 @@ class PassableApplianceCard extends LitElement {
     const c = this.config;
     const powerEntity = this._getPowerEntity("smart_hose_timer");
     const powerObj = powerEntity ? this._getEntity(powerEntity) : null;
-    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false");
 
     const valve = this._getEntity(c.valve_entity);
     const stateSens = c.state_sensor ? this._getEntity(c.state_sensor) : null;
@@ -1471,7 +1498,8 @@ class PassableApplianceCard extends LitElement {
     const smartWatering = c.smart_watering_switch ? this._getEntity(c.smart_watering_switch) : null;
     const rainDelay = c.rain_delay_switch ? this._getEntity(c.rain_delay_switch) : null;
 
-    const isOpen = !isPowerOff && (valve.state === "open" || valve.state === "on");
+    const isOpen = valve.state === "open" || valve.state === "on";
+    const isPowerOff = powerObj && (powerObj.state === "off" || powerObj.state === "false") && !isOpen;
     const statusText = isPowerOff ? "Power Off" : (isOpen ? "Watering" : (stateSens && stateSens.state !== "unavailable" ? stateSens.state : "Auto"));
 
     let lastRunTime = "--";
@@ -3915,7 +3943,7 @@ class PassableApplianceCardEditor extends LitElement {
           <ha-selector
             .hass=${this.hass}
             .selector=${{ text: {} }}
-            .value=${sys.name || ""}
+            .value=${sys.name || undefined}
             .label=${"Custom System Name (Optional, e.g. Upstairs & Attic)"}
             @value-changed=${(e) => this._updateHVACSystemConfig(index, "name", e.detail.value)}
           ></ha-selector>
@@ -3932,7 +3960,7 @@ class PassableApplianceCardEditor extends LitElement {
           <ha-selector
             .hass=${this.hass}
             .selector=${{ entity: { domain: "climate" } }}
-            .value=${sys.climate || ""}
+            .value=${sys.climate || undefined}
             .label=${"Local Climate Entity (HomeKit)"}
             @value-changed=${(e) => this._updateHVACSystemConfig(index, "climate", e.detail.value)}
           ></ha-selector>
@@ -3959,7 +3987,7 @@ class PassableApplianceCardEditor extends LitElement {
                   <ha-selector
                     .hass=${this.hass}
                     .selector=${{ entity: { domain: "input_boolean" } }}
-                    .value=${sys.overshoot_active || ""}
+                    .value=${sys.overshoot_active || undefined}
                     .label=${"Overshoot Active Boolean"}
                     @value-changed=${(e) => this._updateHVACSystemConfig(index, "overshoot_active", e.detail.value)}
                   ></ha-selector>
@@ -3967,7 +3995,7 @@ class PassableApplianceCardEditor extends LitElement {
                   <ha-selector
                     .hass=${this.hass}
                     .selector=${{ entity: { domain: ["input_number", "number"] } }}
-                    .value=${sys.cool_overshoot || ""}
+                    .value=${sys.cool_overshoot || undefined}
                     .label=${"Cool Overshoot Helper Number"}
                     @value-changed=${(e) => this._updateHVACSystemConfig(index, "cool_overshoot", e.detail.value)}
                   ></ha-selector>
@@ -3975,7 +4003,7 @@ class PassableApplianceCardEditor extends LitElement {
                   <ha-selector
                     .hass=${this.hass}
                     .selector=${{ entity: { domain: ["input_number", "number"] } }}
-                    .value=${sys.heat_overshoot || ""}
+                    .value=${sys.heat_overshoot || undefined}
                     .label=${"Heat Overshoot Helper Number"}
                     @value-changed=${(e) => this._updateHVACSystemConfig(index, "heat_overshoot", e.detail.value)}
                   ></ha-selector>
@@ -3983,7 +4011,7 @@ class PassableApplianceCardEditor extends LitElement {
                   <ha-selector
                     .hass=${this.hass}
                     .selector=${{ entity: { domain: ["sensor", "input_number"] } }}
-                    .value=${sys.filter_hours || ""}
+                    .value=${sys.filter_hours || undefined}
                     .label=${"Filter Life Remaining Sensor"}
                     @value-changed=${(e) => this._updateHVACSystemConfig(index, "filter_hours", e.detail.value)}
                   ></ha-selector>
@@ -3991,7 +4019,7 @@ class PassableApplianceCardEditor extends LitElement {
                   <ha-selector
                     .hass=${this.hass}
                     .selector=${{ entity: { domain: ["input_number", "number"] } }}
-                    .value=${sys.filter_life || ""}
+                    .value=${sys.filter_life || undefined}
                     .label=${"Max Filter Life Helper Number"}
                     @value-changed=${(e) => this._updateHVACSystemConfig(index, "filter_life", e.detail.value)}
                   ></ha-selector>
@@ -4058,7 +4086,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
-          .value=${this.config.power_entity || ""}
+          .value=${this.config.power_entity || undefined}
           .configValue=${"power_entity"}
           .label=${"Power Switch / Entity (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4067,7 +4095,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.fridge_control || ""}
+          .value=${this.config.fridge_control || undefined}
           .configValue=${"fridge_control"}
           .label=${"Fridge Control Entity"}
           @value-changed=${this._onFieldChange}
@@ -4076,7 +4104,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.freezer_control || ""}
+          .value=${this.config.freezer_control || undefined}
           .configValue=${"freezer_control"}
           .label=${"Freezer Control Entity"}
           @value-changed=${this._onFieldChange}
@@ -4085,7 +4113,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.dispenser_control || ""}
+          .value=${this.config.dispenser_control || undefined}
           .configValue=${"dispenser_control"}
           .label=${"Dispenser Control Entity (for dial/presets popup)"}
           @value-changed=${this._onFieldChange}
@@ -4094,7 +4122,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.fridge_temp_current || ""}
+          .value=${this.config.fridge_temp_current || undefined}
           .configValue=${"fridge_temp_current"}
           .label=${"Fridge Current Temp Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4103,7 +4131,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.freezer_temp_current || ""}
+          .value=${this.config.freezer_temp_current || undefined}
           .configValue=${"freezer_temp_current"}
           .label=${"Freezer Current Temp Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4112,7 +4140,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: {} }}
-          .value=${this.config.door_status || ""}
+          .value=${this.config.door_status || undefined}
           .configValue=${"door_status"}
           .label=${"Door Status Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4121,7 +4149,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "switch" } }}
-          .value=${this.config.ice_maker_control || ""}
+          .value=${this.config.ice_maker_control || undefined}
           .configValue=${"ice_maker_control"}
           .label=${"Ice Maker Switch"}
           @value-changed=${this._onFieldChange}
@@ -4130,7 +4158,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.water_filter_status || ""}
+          .value=${this.config.water_filter_status || undefined}
           .configValue=${"water_filter_status"}
           .label=${"Water Filter Status Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4147,7 +4175,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
-          .value=${this.config.power_entity || ""}
+          .value=${this.config.power_entity || undefined}
           .configValue=${"power_entity"}
           .label=${"Power Switch / Entity (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4156,7 +4184,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.upper_control || ""}
+          .value=${this.config.upper_control || undefined}
           .configValue=${"upper_control"}
           .label=${"Upper Oven Control Entity"}
           @value-changed=${this._onFieldChange}
@@ -4165,7 +4193,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["water_heater", "climate"] } }}
-          .value=${this.config.lower_control || ""}
+          .value=${this.config.lower_control || undefined}
           .configValue=${"lower_control"}
           .label=${"Lower Oven Control Entity"}
           @value-changed=${this._onFieldChange}
@@ -4174,7 +4202,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["select", "switch", "light"] } }}
-          .value=${this.config.upper_light_entity || ""}
+          .value=${this.config.upper_light_entity || undefined}
           .configValue=${"upper_light_entity"}
           .label=${"Upper Oven Light Entity"}
           @value-changed=${this._onFieldChange}
@@ -4183,7 +4211,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["select", "switch", "light"] } }}
-          .value=${this.config.lower_light_entity || ""}
+          .value=${this.config.lower_light_entity || undefined}
           .configValue=${"lower_light_entity"}
           .label=${"Lower Oven Light Entity"}
           @value-changed=${this._onFieldChange}
@@ -4200,7 +4228,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
-          .value=${this.config.power_entity || ""}
+          .value=${this.config.power_entity || undefined}
           .configValue=${"power_entity"}
           .label=${"Main Laundry Power Switch (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4209,7 +4237,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
-          .value=${this.config.washer_power || ""}
+          .value=${this.config.washer_power || undefined}
           .configValue=${"washer_power"}
           .label=${"Washer Power Switch (e.g. switch.washer_power)"}
           @value-changed=${this._onFieldChange}
@@ -4218,7 +4246,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.washer_status || ""}
+          .value=${this.config.washer_status || undefined}
           .configValue=${"washer_status"}
           .label=${"Washer Current Status Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4227,7 +4255,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["sensor", "select", "input_select"] } }}
-          .value=${this.config.washer_operation || ""}
+          .value=${this.config.washer_operation || undefined}
           .configValue=${"washer_operation"}
           .label=${"Washer Cycle Operation (Sensor / Select)"}
           @value-changed=${this._onFieldChange}
@@ -4236,7 +4264,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.washer_remaining_time || ""}
+          .value=${this.config.washer_remaining_time || undefined}
           .configValue=${"washer_remaining_time"}
           .label=${"Washer Remaining Time Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4245,7 +4273,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
-          .value=${this.config.dryer_power || ""}
+          .value=${this.config.dryer_power || undefined}
           .configValue=${"dryer_power"}
           .label=${"Dryer Power Switch (e.g. switch.dryer_power)"}
           @value-changed=${this._onFieldChange}
@@ -4254,7 +4282,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.dryer_status || ""}
+          .value=${this.config.dryer_status || undefined}
           .configValue=${"dryer_status"}
           .label=${"Dryer Current Status Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4263,7 +4291,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["sensor", "select", "input_select"] } }}
-          .value=${this.config.dryer_operation || ""}
+          .value=${this.config.dryer_operation || undefined}
           .configValue=${"dryer_operation"}
           .label=${"Dryer Cycle Operation (Sensor / Select)"}
           @value-changed=${this._onFieldChange}
@@ -4272,7 +4300,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.dryer_remaining_time || ""}
+          .value=${this.config.dryer_remaining_time || undefined}
           .configValue=${"dryer_remaining_time"}
           .label=${"Dryer Remaining Time Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4289,7 +4317,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
-          .value=${this.config.power_entity || ""}
+          .value=${this.config.power_entity || undefined}
           .configValue=${"power_entity"}
           .label=${"Power Switch / Entity (Optional, e.g. switch.water_heater_power)"}
           @value-changed=${this._onFieldChange}
@@ -4298,7 +4326,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "water_heater" } }}
-          .value=${this.config.entity || ""}
+          .value=${this.config.entity || undefined}
           .configValue=${"entity"}
           .label=${"Main Water Heater Entity"}
           @value-changed=${this._onFieldChange}
@@ -4307,7 +4335,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.inlet_temp_sensor || ""}
+          .value=${this.config.inlet_temp_sensor || undefined}
           .configValue=${"inlet_temp_sensor"}
           .label=${"Inlet Temperature Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4316,7 +4344,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.outlet_temp_sensor || ""}
+          .value=${this.config.outlet_temp_sensor || undefined}
           .configValue=${"outlet_temp_sensor"}
           .label=${"Outlet Temperature Sensor"}
           @value-changed=${this._onFieldChange}
@@ -4325,7 +4353,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.flow_rate_sensor || ""}
+          .value=${this.config.flow_rate_sensor || undefined}
           .configValue=${"flow_rate_sensor"}
           .label=${"Flow Rate Sensor (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4334,7 +4362,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.gas_usage_sensor || ""}
+          .value=${this.config.gas_usage_sensor || undefined}
           .configValue=${"gas_usage_sensor"}
           .label=${"Gas Consumption Sensor (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4343,7 +4371,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "button"] } }}
-          .value=${this.config.recirc_switch || ""}
+          .value=${this.config.recirc_switch || undefined}
           .configValue=${"recirc_switch"}
           .label=${"Recirculation Switch / Control"}
           @value-changed=${this._onFieldChange}
@@ -4360,7 +4388,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["switch", "binary_sensor"] } }}
-          .value=${this.config.power_entity || ""}
+          .value=${this.config.power_entity || undefined}
           .configValue=${"power_entity"}
           .label=${"Power Switch / Entity (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4369,7 +4397,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: ["valve", "switch"] } }}
-          .value=${this.config.valve_entity || ""}
+          .value=${this.config.valve_entity || undefined}
           .configValue=${"valve_entity"}
           .label=${"Zone Valve Entity"}
           @value-changed=${this._onFieldChange}
@@ -4378,7 +4406,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.state_sensor || ""}
+          .value=${this.config.state_sensor || undefined}
           .configValue=${"state_sensor"}
           .label=${"State Sensor (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4387,7 +4415,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.history_sensor || ""}
+          .value=${this.config.history_sensor || undefined}
           .configValue=${"history_sensor"}
           .label=${"History Sensor (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4396,7 +4424,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.battery_sensor || ""}
+          .value=${this.config.battery_sensor || undefined}
           .configValue=${"battery_sensor"}
           .label=${"Battery Sensor (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4405,7 +4433,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "sensor" } }}
-          .value=${this.config.next_watering_sensor || ""}
+          .value=${this.config.next_watering_sensor || undefined}
           .configValue=${"next_watering_sensor"}
           .label=${"Next Watering Sensor (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4414,7 +4442,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "switch" } }}
-          .value=${this.config.smart_watering_switch || ""}
+          .value=${this.config.smart_watering_switch || undefined}
           .configValue=${"smart_watering_switch"}
           .label=${"Smart Watering Switch (Optional)"}
           @value-changed=${this._onFieldChange}
@@ -4423,7 +4451,7 @@ class PassableApplianceCardEditor extends LitElement {
         <ha-selector
           .hass=${this.hass}
           .selector=${{ entity: { domain: "switch" } }}
-          .value=${this.config.rain_delay_switch || ""}
+          .value=${this.config.rain_delay_switch || undefined}
           .configValue=${"rain_delay_switch"}
           .label=${"Rain Delay Switch (Optional)"}
           @value-changed=${this._onFieldChange}
