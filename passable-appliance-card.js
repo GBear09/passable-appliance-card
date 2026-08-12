@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.8.9
+ * Version: 1.9.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.8.9";
+const CARD_VERSION = "1.9.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -1061,7 +1061,7 @@ class PassableApplianceCard extends LitElement {
     const remainingTime = this._formatRemainingTime(entities.remaining_time.state);
 
     return html`
-      <div class="appliance-container m3-card ${isPowerOff ? "unit-power-off" : ""}" style="margin-bottom: 16px;">
+      <div class="appliance-container m3-card ${isPowerOff ? "unit-power-off" : ""}">
         <div class="graphic-header">
           <div class="appliance-header">
             <ha-icon .icon=${icon}></ha-icon>
@@ -1787,6 +1787,7 @@ class PassableApplianceCard extends LitElement {
         </div>
 
         ${this._renderHvacModal(systems)}
+        ${this._renderHvacFullscreenModal(systems)}
       </ha-card>
     `;
   }
@@ -2917,29 +2918,6 @@ class PassableApplianceCard extends LitElement {
                         HVAC Runtime & History (${unitTitle.split('&')[0].trim()})
                       </div>
                       <div style="display:flex; gap:6px; align-items:center;">
-                        ${graphMode === 'timeline'
-                          ? html`
-                              <!-- Resolution Picker (1m, 5m, 15m, 30m, 1h) -->
-                              <div style="display:flex; gap:2px; background:rgba(0,0,0,0.4); padding:2px; border-radius:8px; align-items:center;">
-                                <span style="font-size:0.65rem; color:var(--secondary-text-color); margin:0 4px; font-weight:700;">Res:</span>
-                                ${[1, 5, 15, 30, 60].map(
-                                  (r) => html`
-                                    <button
-                                      class="hvac-tab-btn ${stepMinutes === r ? 'active' : ''}"
-                                      style="padding:2px 5px; font-size:0.65rem; border-radius:6px;"
-                                      @click=${() => {
-                                        this._hvacTimelineRes = r;
-                                        this._selectedHvacChunkIndex = null;
-                                        this.requestUpdate();
-                                      }}
-                                    >
-                                      ${r === 60 ? '1h' : r + 'm'}
-                                    </button>
-                                  `
-                                )}
-                              </div>
-                            `
-                          : ''}
                         <div style="display:flex; gap:4px; background:rgba(0,0,0,0.4); padding:3px; border-radius:10px;">
                           <button
                             class="hvac-tab-btn ${graphMode === 'multiday' ? 'active' : ''}"
@@ -2958,8 +2936,42 @@ class PassableApplianceCard extends LitElement {
                             Today 24h
                           </button>
                         </div>
+                        <button
+                          class="hvac-tab-btn"
+                          style="padding:4px 8px; font-size:0.7rem; display:flex; align-items:center; gap:3px; background:rgba(255,255,255,0.08); border-radius:8px;"
+                          title="Expand Fullscreen History & Analytics"
+                          @click=${() => this._openHvacFullscreen(unitKey)}
+                        >
+                          <ha-icon icon="mdi:fullscreen" style="--mdc-icon-size:14px;"></ha-icon>
+                        </button>
                       </div>
                     </div>
+
+                    ${graphMode === 'timeline'
+                      ? html`
+                          <!-- Dedicated Sub-bar Resolution Picker (Fixed alignment, does not shift top mode buttons) -->
+                          <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+                            <div style="display:flex; gap:2px; background:rgba(0,0,0,0.4); padding:2px; border-radius:8px; align-items:center;">
+                              <span style="font-size:0.65rem; color:var(--secondary-text-color); margin:0 4px; font-weight:700;">Res:</span>
+                              ${[1, 5, 15, 30, 60].map(
+                                (r) => html`
+                                  <button
+                                    class="hvac-tab-btn ${stepMinutes === r ? 'active' : ''}"
+                                    style="padding:2px 5px; font-size:0.65rem; border-radius:6px;"
+                                    @click=${() => {
+                                      this._hvacTimelineRes = r;
+                                      this._selectedHvacChunkIndex = null;
+                                      this.requestUpdate();
+                                    }}
+                                  >
+                                    ${r === 60 ? '1h' : r + 'm'}
+                                  </button>
+                                `
+                              )}
+                            </div>
+                          </div>
+                        `
+                      : ''}
 
                     ${graphMode === 'multiday'
                       ? html`
@@ -3236,6 +3248,399 @@ class PassableApplianceCard extends LitElement {
     `;
   }
 
+  _openHvacFullscreen(unitKey) {
+    this._fireHaptic("medium");
+    this._hvacFullscreenModal = { unitKey };
+    this._hvacFullscreenZoom = 1;
+    this._hvacFullscreenPanMs = 0;
+    this.requestUpdate();
+  }
+
+  _closeHvacFullscreen() {
+    this._fireHaptic("light");
+    this._hvacFullscreenModal = null;
+    this.requestUpdate();
+  }
+
+  _adjustHvacFullscreenZoom(delta) {
+    this._fireHaptic("light");
+    const current = this._hvacFullscreenZoom || 1;
+    this._hvacFullscreenZoom = Math.max(1, Math.min(6, current + delta));
+    this.requestUpdate();
+  }
+
+  _panHvacFullscreenTime(directionMs) {
+    this._fireHaptic("light");
+    const current = this._hvacFullscreenPanMs || 0;
+    this._hvacFullscreenPanMs = current + directionMs;
+    this.requestUpdate();
+  }
+
+  _resetHvacFullscreenControls() {
+    this._fireHaptic("light");
+    this._hvacFullscreenZoom = 1;
+    this._hvacFullscreenPanMs = 0;
+    this.requestUpdate();
+  }
+
+  _renderHvacFullscreenModal(systems = []) {
+    if (!this._hvacFullscreenModal) return html``;
+    const { unitKey } = this._hvacFullscreenModal;
+    const c = this.config;
+    const sysConfig = (systems || []).find((s) => s.key === unitKey) || {};
+    const unitTitle = sysConfig.name || (unitKey === "downstairs" ? "Downstairs & Basement" : "Upstairs & Attic");
+
+    const resolveEntity = (primaryId, fallbacks) => {
+      if (this.hass && this.hass.states[primaryId]) return primaryId;
+      for (const fb of fallbacks) {
+        if (this.hass && this.hass.states[fb]) return fb;
+      }
+      return primaryId;
+    };
+
+    const climateId = resolveEntity(
+      sysConfig.climate || c[`${unitKey}_climate`],
+      [`climate.${unitKey}`, `climate.${unitKey}_hk`, `climate.${unitKey}_thermostat`, `climate.hvac_${unitKey}`]
+    );
+    const outdoorTempId = resolveEntity(
+      sysConfig.outdoor_temp || c.outdoor_temp_sensor || c.outdoor_temp,
+      ["sensor.outdoor_temperature", "weather.home", "weather.downstairs", "weather.upstairs"]
+    );
+
+    const climate = this._getEntity(climateId);
+    const outdoorTempObj = this._getEntity(outdoorTempId);
+
+    const zoom = this._hvacFullscreenZoom || 1;
+    const panMs = this._hvacFullscreenPanMs || 0;
+
+    const cachedHistory = (this._hvacHistoryCache && this._hvacHistoryCache[unitKey]) ? this._hvacHistoryCache[unitKey] : null;
+    const liveEndTimeMs = cachedHistory ? cachedHistory.endTime : Date.now();
+    const baseWindowMs = 24 * 3600 * 1000;
+    const visibleWindowMs = baseWindowMs / zoom;
+    const endTimeMs = liveEndTimeMs + panMs;
+    const startTimeMs = endTimeMs - visibleWindowMs;
+
+    const outdoorTimeline = cachedHistory ? cachedHistory.outdoorHistory : [];
+    const climateTimeline = cachedHistory ? cachedHistory.climateHistory : [];
+
+    const stepMinutes = parseInt(this._hvacTimelineRes || 15, 10);
+    const numPoints = Math.max(20, Math.floor((visibleWindowMs / (60 * 1000)) / stepMinutes));
+
+    const normalizeState = (item) => {
+      if (!item) return null;
+      const state = item.state !== undefined ? item.state : item.s;
+      const attributes = item.attributes !== undefined ? item.attributes : (item.a || {});
+      let timeMs = 0;
+      if (item.last_updated !== undefined) {
+        timeMs = typeof item.last_updated === "number" ? (item.last_updated > 1e11 ? item.last_updated : item.last_updated * 1000) : new Date(item.last_updated).getTime();
+      } else if (item.lu !== undefined) {
+        timeMs = typeof item.lu === "number" ? (item.lu > 1e11 ? item.lu : item.lu * 1000) : new Date(item.lu).getTime();
+      } else if (item.last_changed !== undefined) {
+        timeMs = typeof item.last_changed === "number" ? (item.last_changed > 1e11 ? item.last_changed : item.last_changed * 1000) : new Date(item.last_changed).getTime();
+      } else if (item.lc !== undefined) {
+        timeMs = typeof item.lc === "number" ? (item.lc > 1e11 ? item.lc : item.lc * 1000) : new Date(item.lc).getTime();
+      }
+      return { state, attributes, timeMs };
+    };
+
+    const getStateAt = (timeline, targetMs) => {
+      if (!timeline || timeline.length === 0) return null;
+      let active = null;
+      for (let i = 0; i < timeline.length; i++) {
+        const norm = normalizeState(timeline[i]);
+        if (norm && norm.timeMs <= targetMs) {
+          active = norm;
+        } else if (norm && norm.timeMs > targetMs) {
+          break;
+        }
+      }
+      return active || normalizeState(timeline[0]);
+    };
+
+    const fallbackIndoor = (climate && climate.attributes && climate.attributes.current_temperature) ? climate.attributes.current_temperature : 72;
+    const fallbackSetpoint = (climate && climate.attributes && (climate.attributes.temperature || climate.attributes.target_temp_low || climate.attributes.target_temp_high)) ? (climate.attributes.temperature || climate.attributes.target_temp_low || climate.attributes.target_temp_high) : 72;
+    let fallbackOutdoor = 75;
+    if (outdoorTempObj) {
+      if (outdoorTempObj.attributes && outdoorTempObj.attributes.temperature !== undefined && outdoorTempObj.attributes.temperature !== null && !isNaN(parseFloat(outdoorTempObj.attributes.temperature))) {
+        fallbackOutdoor = parseFloat(outdoorTempObj.attributes.temperature);
+      } else if (outdoorTempObj.state && !isNaN(parseFloat(outdoorTempObj.state))) {
+        fallbackOutdoor = parseFloat(outdoorTempObj.state);
+      }
+    }
+
+    const rawTimelineData = Array.from({ length: numPoints }, (_, idx) => {
+      const cx = 50 + (idx / Math.max(1, numPoints - 1)) * 900;
+      const pointTimeMs = startTimeMs + (idx / Math.max(1, numPoints - 1)) * visibleWindowMs;
+      const pointDate = new Date(pointTimeMs);
+      const hours = pointDate.getHours();
+      const mins = pointDate.getMinutes();
+      const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+      const ampm = hours < 12 ? "AM" : "PM";
+      const minStr = String(mins).padStart(2, "0");
+      const dateStr = `${pointDate.getMonth() + 1}/${pointDate.getDate()}`;
+      const timeLabel = `${dateStr} ${displayHour}:${minStr} ${ampm}`;
+
+      let indoorTemp = fallbackIndoor;
+      let setpoint = fallbackSetpoint;
+      let outdoorTemp = fallbackOutdoor;
+      let isActive = false;
+
+      if (climateTimeline.length > 0) {
+        const cState = getStateAt(climateTimeline, pointTimeMs);
+        if (cState && cState.attributes) {
+          const attrs = cState.attributes;
+          if (attrs.current_temperature !== undefined && attrs.current_temperature !== null) {
+            indoorTemp = parseFloat(attrs.current_temperature);
+          }
+          if (attrs.temperature !== undefined && attrs.temperature !== null) {
+            setpoint = parseFloat(attrs.temperature);
+          } else if (attrs.target_temp_low !== undefined && attrs.target_temp_low !== null) {
+            setpoint = parseFloat(attrs.target_temp_low);
+          }
+          const act = (attrs.hvac_action || "").toLowerCase();
+          const st = (cState.state || "").toLowerCase();
+          if (act === "cooling" || act === "heating") {
+            isActive = true;
+          } else if (act === "idle" || act === "off") {
+            isActive = false;
+          } else {
+            if (st === "cool" || st === "cooling") {
+              isActive = parseFloat(indoorTemp) > (parseFloat(setpoint) + 0.1);
+            } else if (st === "heat" || st === "heating") {
+              isActive = parseFloat(indoorTemp) < (parseFloat(setpoint) - 0.1);
+            }
+          }
+        }
+      }
+
+      if (outdoorTimeline.length > 0) {
+        const oState = getStateAt(outdoorTimeline, pointTimeMs);
+        if (oState) {
+          const attrs = oState.attributes || {};
+          if (attrs.temperature !== undefined && attrs.temperature !== null && !isNaN(parseFloat(attrs.temperature))) {
+            outdoorTemp = parseFloat(attrs.temperature);
+          } else if (oState.state !== undefined && oState.state !== null && !isNaN(parseFloat(oState.state))) {
+            outdoorTemp = parseFloat(oState.state);
+          }
+        }
+      }
+
+      return { idx, pointTimeMs, timeLabel, indoorTemp: parseFloat(indoorTemp).toFixed(1), setpoint: parseFloat(setpoint).toFixed(1), outdoorTemp: parseFloat(outdoorTemp).toFixed(1), isActive, cx };
+    });
+
+    const allTemps = rawTimelineData.flatMap(pt => [parseFloat(pt.indoorTemp), parseFloat(pt.setpoint), parseFloat(pt.outdoorTemp)]);
+    const rawMinTemp = Math.min(...allTemps);
+    const rawMaxTemp = Math.max(...allTemps);
+
+    const minGridTemp = Math.floor(rawMinTemp - 2);
+    const maxGridTemp = Math.ceil(rawMaxTemp + 2);
+    const tempSpan = Math.max(1, maxGridTemp - minGridTemp);
+
+    const calcTimelineY = (tempVal) => {
+      const v = Math.max(minGridTemp, Math.min(maxGridTemp, parseFloat(tempVal) || minGridTemp));
+      return 450 - ((v - minGridTemp) / tempSpan) * 380;
+    };
+
+    const timelineData = rawTimelineData.map(pt => ({
+      ...pt,
+      indoorY: calcTimelineY(pt.indoorTemp),
+      setpointY: calcTimelineY(pt.setpoint),
+      outdoorY: calcTimelineY(pt.outdoorTemp)
+    }));
+
+    const selectedChunkIdx = (this._selectedHvacFullscreenChunkIndex !== undefined && this._selectedHvacFullscreenChunkIndex !== null)
+      ? Math.min(timelineData.length - 1, this._selectedHvacFullscreenChunkIndex)
+      : (timelineData.length - 1);
+
+    const activePt = timelineData[selectedChunkIdx] || timelineData[timelineData.length - 1];
+
+    let activeBands = [];
+    let currentBandStart = null;
+    let currentBandEnd = null;
+    const chunkWidth = numPoints > 1 ? (900 / (numPoints - 1)) : 10;
+
+    timelineData.forEach((pt) => {
+      if (pt.isActive) {
+        const xStart = Math.max(50, pt.cx - chunkWidth / 2);
+        const xEnd = Math.min(950, pt.cx + chunkWidth / 2);
+        if (currentBandStart === null) {
+          currentBandStart = xStart;
+          currentBandEnd = xEnd;
+        } else {
+          currentBandEnd = xEnd;
+        }
+      } else {
+        if (currentBandStart !== null) {
+          activeBands.push({ x: currentBandStart, width: Math.max(3, currentBandEnd - currentBandStart) });
+          currentBandStart = null;
+          currentBandEnd = null;
+        }
+      }
+    });
+    if (currentBandStart !== null) {
+      activeBands.push({ x: currentBandStart, width: Math.max(3, currentBandEnd - currentBandStart) });
+    }
+
+    const activeBandsPath = activeBands.map(b => 
+      `M ${b.x.toFixed(1)} 70 H ${(b.x + b.width).toFixed(1)} V 450 H ${b.x.toFixed(1)} Z`
+    ).join(" ");
+
+    const xLabels = Array.from({ length: 9 }, (_, i) => {
+      const idx = Math.min(timelineData.length - 1, Math.floor(i * (timelineData.length - 1) / 8));
+      return timelineData[idx];
+    });
+
+    const indoorPathString = "M " + timelineData.map(pt => `${pt.cx.toFixed(1)} ${pt.indoorY.toFixed(1)}`).join(" L ");
+    const setpointPathString = "M " + timelineData.map(pt => `${pt.cx.toFixed(1)} ${pt.setpointY.toFixed(1)}`).join(" L ");
+    const outdoorPathString = "M " + timelineData.map(pt => `${pt.cx.toFixed(1)} ${pt.outdoorY.toFixed(1)}`).join(" L ");
+
+    const formatOffsetHours = (ms) => {
+      if (ms === 0) return "Live (Now)";
+      const h = (ms / (3600 * 1000)).toFixed(1);
+      return h > 0 ? `+${h}h ahead` : `${h}h ago`;
+    };
+
+    return html`
+      <div
+        style="position:fixed; inset:0; z-index:99999; background:rgba(8,12,20,0.96); backdrop-filter:blur(12px); display:flex; flex-direction:column; padding:20px; box-sizing:border-box; color:white; font-family:sans-serif;"
+        @wheel=${(e) => {
+          e.preventDefault();
+          this._adjustHvacFullscreenZoom(e.deltaY < 0 ? 0.5 : -0.5);
+        }}
+      >
+        <!-- Fullscreen Header -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.12); padding-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <ha-icon icon="mdi:hvac" style="color:var(--primary-color); --mdc-icon-size:28px;"></ha-icon>
+            <div>
+              <h2 style="margin:0; font-size:1.3rem; font-weight:700;">${unitTitle} Analytics — Interactive Fullscreen History</h2>
+              <span style="font-size:0.75rem; color:var(--secondary-text-color);">
+                Time Window: ${new Date(startTimeMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} – ${new Date(endTimeMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} | Zoom: ${zoom.toFixed(1)}x | Offset: ${formatOffsetHours(panMs)}
+              </span>
+            </div>
+          </div>
+          <button
+            style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:white; border-radius:10px; padding:8px 16px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;"
+            @click=${() => this._closeHvacFullscreen()}
+          >
+            <ha-icon icon="mdi:fullscreen-exit"></ha-icon>
+            <span>Exit Fullscreen</span>
+          </button>
+        </div>
+
+        <!-- Controls Toolbar -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); padding:10px 16px; border-radius:12px; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+          <!-- Zoom Controls -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:0.8rem; font-weight:700; color:var(--secondary-text-color);">Zoom:</span>
+            <button class="pill-btn" style="width:32px; height:32px; font-size:1.1rem; border-radius:8px;" @click=${() => this._adjustHvacFullscreenZoom(-0.5)}>-</button>
+            <span style="font-weight:700; font-size:0.9rem; min-width:40px; text-align:center;">${zoom.toFixed(1)}x</span>
+            <button class="pill-btn" style="width:32px; height:32px; font-size:1.1rem; border-radius:8px;" @click=${() => this._adjustHvacFullscreenZoom(0.5)}>+</button>
+            <button class="pill-btn" style="padding:0 10px; height:32px; font-size:0.75rem; border-radius:8px;" @click=${() => this._resetHvacFullscreenControls()}>Reset Zoom</button>
+          </div>
+
+          <!-- Pan Controls -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:0.8rem; font-weight:700; color:var(--secondary-text-color);">Pan Time:</span>
+            <button class="pill-btn" style="padding:0 12px; height:32px; font-size:0.8rem; border-radius:8px;" @click=${() => this._panHvacFullscreenTime(-3 * 3600 * 1000)}>◀ 3h</button>
+            <button class="pill-btn" style="padding:0 12px; height:32px; font-size:0.8rem; border-radius:8px;" @click=${() => this._panHvacFullscreenTime(-12 * 3600 * 1000)}>◀ 12h</button>
+            <button class="pill-btn" style="padding:0 12px; height:32px; font-size:0.8rem; border-radius:8px;" @click=${() => this._panHvacFullscreenTime(12 * 3600 * 1000)}>12h ▶</button>
+            <button class="pill-btn" style="padding:0 12px; height:32px; font-size:0.8rem; border-radius:8px;" @click=${() => this._panHvacFullscreenTime(3 * 3600 * 1000)}>3h ▶</button>
+            <button class="pill-btn" style="padding:0 10px; height:32px; font-size:0.75rem; border-radius:8px; background:var(--primary-color); color:black;" @click=${() => this._panHvacFullscreenTime(-panMs)}>Live (Now)</button>
+          </div>
+
+          <!-- Legend -->
+          <div style="display:flex; align-items:center; gap:14px; font-size:0.8rem; font-weight:600;">
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span style="display:inline-block; width:12px; height:12px; border-radius:3px; background:#ffffff;"></span>
+              <span>Outdoor (${activePt.outdoorTemp}°F)</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span style="display:inline-block; width:12px; height:12px; border-radius:3px; background:#eab308;"></span>
+              <span>Setpoint (${activePt.setpoint}°F)</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span style="display:inline-block; width:12px; height:12px; border-radius:3px; background:#0284c7;"></span>
+              <span>Indoor (${activePt.indoorTemp}°F)</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span style="display:inline-block; width:12px; height:12px; border-radius:3px; background:rgba(2,132,199,0.4); border:1px solid #0284c7;"></span>
+              <span>Compressor Active</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fullscreen SVG Canvas Container -->
+        <div style="flex:1; width:100%; position:relative; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:16px; box-sizing:border-box; overflow:hidden;">
+          <svg viewBox="0 0 1000 500" style="width:100%; height:100%; display:block;">
+            <defs>
+              <linearGradient id="fullscreenActiveBandGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#0284c7" stop-opacity="0.45" />
+                <stop offset="100%" stop-color="#0284c7" stop-opacity="0.05" />
+              </linearGradient>
+            </defs>
+
+            <!-- Background Grid & Temp Lines -->
+            ${[70, 165, 260, 355, 450].map((y, i) => {
+              const temps = [maxGridTemp, Math.round(minGridTemp + tempSpan * 0.75), Math.round(minGridTemp + tempSpan * 0.5), Math.round(minGridTemp + tempSpan * 0.25), minGridTemp];
+              return svg`
+                <line x1="50" y1="${y}" x2="950" y2="${y}" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4 4" stroke-width="1"/>
+                <text x="38" y="${y + 4}" fill="#71717a" font-size="12" font-weight="700" text-anchor="end">${temps[i]}°</text>
+              `;
+            })}
+
+            <!-- Active Compressor Shading Bands -->
+            <path d="${activeBandsPath}" fill="url(#fullscreenActiveBandGrad)" />
+
+            <!-- Outdoor Temp Curve (Dashed White) -->
+            <path d="${outdoorPathString}" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-dasharray="6 4" stroke-opacity="0.85"/>
+
+            <!-- Setpoint Curve (Solid Yellow) -->
+            <path d="${setpointPathString}" fill="none" stroke="#eab308" stroke-width="3"/>
+
+            <!-- Indoor Temp Curve (Solid Blue) -->
+            <path d="${indoorPathString}" fill="none" stroke="#0284c7" stroke-width="4.5" stroke-linecap="round"/>
+
+            <!-- Interactive Clickable Points -->
+            ${timelineData.map((pt, idx) => svg`
+              <circle
+                cx="${pt.cx}"
+                cy="${pt.indoorY}"
+                r="${selectedChunkIdx === idx ? 7 : 4}"
+                fill="${selectedChunkIdx === idx ? '#ffffff' : '#0284c7'}"
+                stroke="${selectedChunkIdx === idx ? '#0284c7' : '#ffffff'}"
+                stroke-width="${selectedChunkIdx === idx ? 3 : 1.5}"
+                style="cursor:pointer;"
+                @click=${() => {
+                  this._selectedHvacFullscreenChunkIndex = idx;
+                  this.requestUpdate();
+                }}
+              />
+            `)}
+
+            <!-- Vertical Active Cursor Guide -->
+            <line x1="${activePt.cx}" y1="70" x2="${activePt.cx}" y2="450" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+            <!-- Active Hover Tooltip Card -->
+            <g transform="translate(${activePt.cx > 650 ? activePt.cx - 240 : activePt.cx + 20}, ${Math.max(80, activePt.indoorY - 40)})">
+              <rect x="0" y="0" width="220" height="90" rx="10" fill="rgba(15,23,42,0.95)" stroke="var(--primary-color)" stroke-width="1.5"/>
+              <text x="14" y="24" fill="#ffffff" font-size="13" font-weight="800">${activePt.timeLabel}</text>
+              <text x="14" y="44" fill="${activePt.isActive ? '#38bdf8' : '#a1a1aa'}" font-size="12" font-weight="700">Status: ${activePt.isActive ? 'Compressor Active' : 'Idle'}</text>
+              <text x="14" y="62" fill="#0284c7" font-size="12" font-weight="600">Indoor: ${activePt.indoorTemp}°F</text>
+              <text x="120" y="62" fill="#eab308" font-size="12" font-weight="600">Set: ${activePt.setpoint}°F</text>
+              <text x="14" y="80" fill="#ffffff" font-size="11" font-weight="500">Outdoor: ${activePt.outdoorTemp}°F</text>
+            </g>
+
+            <!-- X-Axis Timestamps -->
+            ${xLabels.map(pt => svg`
+              <text x="${pt.cx}" y="475" fill="#a1a1aa" font-size="11" font-weight="600" text-anchor="middle">${pt.timeLabel}</text>
+            `)}
+          </svg>
+        </div>
+      </div>
+    `;
+  }
+
   // ==========================================
   // STYLES & GRAPHIC CSS
   // ==========================================
@@ -3389,6 +3794,9 @@ class PassableApplianceCard extends LitElement {
         display: flex; flex-direction: column; align-items: center;
         background: var(--secondary-background-color, #f5f5f5); border: 1px solid var(--divider-color, #e0e0e0);
         border-radius: var(--ha-card-border-radius, 12px); padding: 16px; box-sizing: border-box;
+      }
+      .appliance-container:not(:last-child) {
+        margin-bottom: 16px;
       }
       .graphic-header { display: flex; width: 100%; justify-content: space-between; align-items: center; margin-bottom: 12px; height: 48px; }
       .appliance-header { flex: 1; display: flex; align-items: center; color: var(--primary-text-color); }
