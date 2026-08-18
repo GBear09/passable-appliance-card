@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.1.0
+ * Version: 2.1.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "2.1.0";
+const CARD_VERSION = "2.1.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -388,21 +388,15 @@ class PassableApplianceCard extends LitElement {
     if (p && this.hass.states[`sensor.${p}_${suffix}`]) {
       return this.hass.states[`sensor.${p}_${suffix}`];
     }
-    if (p && this.hass.states[`select.${p}_${suffix}`]) {
-      return this.hass.states[`select.${p}_${suffix}`];
-    }
-    if (p && this.hass.states[`switch.${p}_${suffix}`]) {
-      return this.hass.states[`switch.${p}_${suffix}`];
-    }
     for (const [entityId, stateObj] of Object.entries(this.hass.states)) {
-      if (entityId.endsWith(`_${suffix}`)) {
+      if (entityId.startsWith("sensor.") && entityId.endsWith(`_${suffix}`)) {
         if (!p || entityId.includes(p)) {
           return stateObj;
         }
       }
     }
     for (const [entityId, stateObj] of Object.entries(this.hass.states)) {
-      if (entityId.endsWith(`_${suffix}`)) {
+      if (entityId.startsWith("sensor.") && entityId.endsWith(`_${suffix}`)) {
         return stateObj;
       }
     }
@@ -522,9 +516,8 @@ class PassableApplianceCard extends LitElement {
     }
     if (!entityId || !this.hass || !this.hass.states[entityId]) return fallback;
     const stateObj = this.hass.states[entityId];
-    if (stateObj.attributes && stateObj.attributes.temperature !== undefined && stateObj.attributes.temperature !== null) {
-      const num = parseFloat(stateObj.attributes.temperature);
-      if (!isNaN(num)) return num;
+    if (stateObj.attributes && stateObj.attributes.temperature !== undefined) {
+      return parseFloat(stateObj.attributes.temperature);
     }
     const num = parseFloat(stateObj.state);
     return isNaN(num) ? fallback : num;
@@ -741,6 +734,279 @@ class PassableApplianceCard extends LitElement {
       </div>
     `;
   }
+
+  _toggleRecircSettings(recircEntityId) {
+    this._fireHaptic("light");
+    this._showRecircSettings = !this._showRecircSettings;
+    if (this._showRecircSettings && recircEntityId) {
+      this._fetchHistory(recircEntityId);
+    }
+  }
+
+  async _fetchHistory(entityId) {
+    if (!this.hass || !entityId) return;
+    const now = new Date();
+    const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const endTime = now.toISOString();
+    try {
+      const history = await this.hass.callApi(
+        "GET",
+        `history/period/${startTime}?filter_entity_id=${entityId}&end_time=${endTime}`
+      );
+      if (history && history.length > 0) {
+        this._historyData = history[0];
+      } else {
+        this._historyData = [];
+      }
+    } catch (e) {
+      console.error("Failed to fetch history for timeline", e);
+      this._historyData = [];
+    }
+  }
+
+  _formatShortTime(dateObj) {
+    if (!dateObj || isNaN(dateObj.getTime())) return "";
+    return dateObj.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  _selectTimelineSegment(text) {
+    this._fireHaptic("light");
+    this._selectedSegmentText = text;
+  }
+
+  _getPowerEntity(applianceType, subType = null) {
+    const c = this.config || {};
+    const states = this.hass && this.hass.states ? this.hass.states : {};
+
+    if (applianceType === "water_heater") {
+      if (c.power_entity && states[c.power_entity]) return c.power_entity;
+      if (c.power_entity) return c.power_entity;
+      if (c.device_prefix && states[`switch.${c.device_prefix}_power`]) return `switch.${c.device_prefix}_power`;
+      if (states["switch.water_heater_power"]) return "switch.water_heater_power";
+      if (states["switch.navien_power"]) return "switch.navien_power";
+      return null;
+    }
+
+    if (applianceType === "laundry") {
+      if (subType === "washer") {
+        if (c.washer_power && states[c.washer_power]) return c.washer_power;
+        if (c.washer_power) return c.washer_power;
+        if (c.washer && c.washer.power_entity) return c.washer.power_entity;
+        if (c.device_prefix && states[`switch.${c.device_prefix}_washer_power`]) return `switch.${c.device_prefix}_washer_power`;
+        if (states["switch.washer_power"]) return "switch.washer_power";
+        return null;
+      }
+      if (subType === "dryer") {
+        if (c.dryer_power && states[c.dryer_power]) return c.dryer_power;
+        if (c.dryer_power) return c.dryer_power;
+        if (c.dryer && c.dryer.power_entity) return c.dryer.power_entity;
+        if (c.device_prefix && states[`switch.${c.device_prefix}_dryer_power`]) return `switch.${c.device_prefix}_dryer_power`;
+        if (states["switch.dryer_power"]) return "switch.dryer_power";
+        return null;
+      }
+      if (c.power_entity && states[c.power_entity]) return c.power_entity;
+      if (c.power_entity) return c.power_entity;
+      if (c.device_prefix && states[`switch.${c.device_prefix}_power`]) return `switch.${c.device_prefix}_power`;
+      return null;
+    }
+
+    if (c.power_entity && states[c.power_entity]) return c.power_entity;
+    if (c.power_entity) return c.power_entity;
+    if (c.device_prefix && states[`switch.${c.device_prefix}_power`]) return `switch.${c.device_prefix}_power`;
+    return null;
+  }
+
+  _renderPowerButton(entityId, extraClass = "") {
+    if (!entityId || !this.hass || !this.hass.states) return html``;
+    const stateObj = this._getEntity(entityId);
+    if (!stateObj || stateObj.state === "unavailable") return html``;
+    const isOn = stateObj.state === "on" || stateObj.state === "true";
+
+    return html`
+      <div
+        class="power-btn-header ${isOn ? "on" : "off"} ${extraClass}"
+        @click=${(e) => {
+          e.stopPropagation();
+          this._toggleEntity(entityId);
+        }}
+        title="Power: ${isOn ? "ON" : "OFF"} (Click to toggle)"
+      >
+        <ha-icon icon="mdi:power"></ha-icon>
+      </div>
+    `;
+  }
+
+  _detectApplianceType() {
+    const type = this.config.appliance_type;
+    if (type && type !== "auto") {
+      return type;
+    }
+
+    if (this.config.upstairs_climate || this.config.downstairs_climate || this.config.climate) {
+      return "hvac";
+    }
+    if (this.config.valve_entity || this.config.bhyve_mode !== undefined) {
+      return "smart_hose_timer";
+    }
+    if (this.config.washer || this.config.dryer || this.config.washer_status || this.config.dryer_status) {
+      return "laundry";
+    }
+    if (this.config.cooktop || this.config.oven || this.config.upper_control) {
+      return "induction_range";
+    }
+    if (this.config.fridge_control || this.config.freezer_control) {
+      return "refrigerator";
+    }
+    if (this.config.entity && this.config.entity.startsWith("water_heater.")) {
+      return "water_heater";
+    }
+
+    return "refrigerator";
+  }
+
+  async _showFridgePopup() {
+    this._popup = "refrigerator";
+    this._activeFridgeTab = "fridge";
+    this._embeddedCard = null;
+    await this.updateComplete;
+  }
+
+  async _showFreezerPopup() {
+    this._popup = "refrigerator";
+    this._activeFridgeTab = "freezer";
+    this._embeddedCard = null;
+    await this.updateComplete;
+  }
+
+  async _showDispenserPopup() {
+    this._popup = "refrigerator";
+    this._activeFridgeTab = "dispenser";
+    this._embeddedCard = null;
+    await this.updateComplete;
+  }
+
+  async _showOvenPopup(ovenType) {
+    this._popup = "oven";
+    this._popupOven = ovenType || "upper";
+    this._activeOvenTab = ovenType || "upper";
+    this._embeddedCard = null;
+    await this.updateComplete;
+  }
+
+  _closePopup() {
+    if (!this.shadowRoot) {
+      this._popup = null;
+      this._popupOven = null;
+      this._hvacModal = null;
+      return;
+    }
+    const overlay = this.shadowRoot.querySelector(".popup-overlay");
+    const content = this.shadowRoot.querySelector(".popup-content");
+
+    if (overlay) overlay.classList.remove("visible");
+    if (content) {
+      content.style.transform = "";
+      content.classList.remove("visible");
+    }
+
+    setTimeout(() => {
+      this._popup = null;
+      this._popupOven = null;
+      this._hvacModal = null;
+      this._embeddedCard = null;
+    }, 300);
+  }
+
+  _handleTouchStart(e) {
+    const popupContent = e.currentTarget;
+    if (popupContent.scrollTop > 0) return;
+    this._startY = e.touches[0].clientY;
+    this._currentY = this._startY;
+    this._touchTarget = popupContent;
+    popupContent.style.animation = "none";
+    popupContent.style.transition = "none";
+  }
+
+  _handleTouchMove(e) {
+    if (this._startY === undefined || !this._touchTarget) return;
+    const popupContent = this._touchTarget;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - this._startY;
+
+    if (deltaY > 0 && popupContent.scrollTop <= 0) {
+      if (e.cancelable) e.preventDefault();
+      this._currentY = currentY;
+      popupContent.style.transform = `translateY(${deltaY}px)`;
+    } else if (this._currentY !== undefined && currentY <= this._startY) {
+      this._currentY = currentY;
+      popupContent.style.transform = `translateY(0px)`;
+    }
+  }
+
+  _handleTouchEnd(e) {
+    if (this._startY === undefined || !this._touchTarget) return;
+    const popupContent = this._touchTarget;
+    const deltaY = (this._currentY !== undefined) ? (this._currentY - this._startY) : 0;
+
+    if (deltaY > 80) {
+      popupContent.style.transition = "transform 180ms ease-in, opacity 180ms ease-in";
+      popupContent.style.transform = "translateY(100%)";
+      popupContent.style.opacity = "0";
+      setTimeout(() => {
+        this._closePopup();
+      }, 180);
+    } else {
+      popupContent.style.transition = "transform 250ms cubic-bezier(0.2, 0, 0, 1)";
+      popupContent.style.transform = "translateY(0px)";
+    }
+    this._startY = undefined;
+    this._currentY = undefined;
+    this._touchTarget = null;
+  }
+
+  _getPresetIcon(presetName) {
+    const p = (presetName || "").toLowerCase();
+    if (p.includes("day") || p.includes("home")) return "mdi:weather-sunny";
+    if (p.includes("sleep") || p.includes("night")) return "mdi:weather-night";
+    if (p.includes("away") || p.includes("vacation")) return "mdi:home-export-outline";
+    if (p.includes("eco")) return "mdi:leaf";
+    return "mdi:clock-outline";
+  }
+
+  _getPresetColor(presetName) {
+    const p = (presetName || "").toLowerCase();
+    if (p.includes("day") || p.includes("home")) return "#facc15";
+    if (p.includes("sleep") || p.includes("night")) return "#a855f7";
+    if (p.includes("away") || p.includes("vacation")) return "#3b82f6";
+    if (p.includes("eco")) return "#22c55e";
+    return "var(--primary-color)";
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+
+    const detectedType = this._detectApplianceType();
+
+    switch (detectedType) {
+      case "refrigerator":
+        return this._renderRefrigerator();
+      case "induction_range":
+      case "range":
+        return this._renderInductionRange();
+      case "laundry":
+        return this._renderLaundry();
+      case "water_heater":
+        return this._renderWaterHeater();
+      case "smart_hose_timer":
+      case "hose_timer":
+        return this._renderSmartHoseTimer();
+      case "hvac":
+        return this._renderHVAC();
+      default:
+        return this._renderRefrigerator();
+    }
+  }
+
   // ==========================================
   // 1. REFRIGERATOR & FREEZER
   // ==========================================
@@ -1178,7 +1444,6 @@ class PassableApplianceCard extends LitElement {
     `;
   }
 
-    // ==========================================
   // 2. INDUCTION RANGE & OVEN
   // ==========================================
   _renderInductionRange() {
@@ -1765,7 +2030,6 @@ class PassableApplianceCard extends LitElement {
     `;
   }
 
-    // ==========================================
   // 3. LAUNDRY CENTER
   // ==========================================
   _renderLaundry() {
@@ -4685,113 +4949,6 @@ class PassableApplianceCard extends LitElement {
         width: 100%;
         padding: 0 2px;
       }
-      /* POPUP TABS NAVIGATION */
-      .popup-tabs {
-        display: flex;
-        background: rgba(128, 128, 128, 0.12);
-        padding: 4px;
-        border-radius: 14px;
-        gap: 4px;
-        margin-bottom: 14px;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .popup-tab {
-        flex: 1;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 8px 10px;
-        border-radius: 10px;
-        background: transparent;
-        border: none;
-        color: var(--secondary-text-color);
-        font-size: 0.82rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        user-select: none;
-        box-sizing: border-box;
-      }
-      .popup-tab ha-icon {
-        --mdc-icon-size: 16px;
-      }
-      .popup-tab:hover {
-        color: var(--primary-text-color);
-        background: rgba(128, 128, 128, 0.15);
-      }
-      .popup-tab.active-tab {
-        background: var(--card-background-color, #1c1c1e);
-        color: var(--primary-color, #3b82f6);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-      }
-
-      /* TEMPERATURE CONTROLLER MODE DROPDOWN */
-      .temp-mode-dropdown-container {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: rgba(128, 128, 128, 0.12);
-        padding: 3px 8px 3px 10px;
-        border-radius: 20px;
-        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
-        box-sizing: border-box;
-      }
-      .temp-mode-label {
-        font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        color: var(--secondary-text-color);
-      }
-      .temp-mode-dropdown-wrapper {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-      }
-      .temp-mode-dropdown-wrapper ha-icon {
-        --mdc-icon-size: 16px;
-        color: var(--primary-color, #3b82f6);
-      }
-      .temp-mode-select {
-        background: transparent;
-        border: none;
-        color: var(--primary-text-color);
-        font-size: 0.82rem;
-        font-weight: 700;
-        outline: none;
-        cursor: pointer;
-        padding-right: 4px;
-      }
-      .temp-mode-select option {
-        background: var(--ha-card-background, #1c1c1e);
-        color: var(--primary-text-color);
-      }
-      .native-temp-card.is-mode-off {
-        opacity: 0.85;
-      }
-      .select-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-      }
-      .popup-select-input {
-        background: var(--card-background-color, rgba(128, 128, 128, 0.15));
-        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.15));
-        border-radius: 8px;
-        padding: 6px 10px;
-        color: var(--primary-text-color);
-        font-size: 0.85rem;
-        outline: none;
-        cursor: pointer;
-        max-width: 180px;
-        box-sizing: border-box;
-      }
-      .popup-select-input option {
-        background: var(--ha-card-background, #1c1c1e);
-        color: var(--primary-text-color);
-      }
       .filter-control-row {
         box-sizing: border-box;
         width: 100%;
@@ -5078,6 +5235,114 @@ class PassableApplianceCard extends LitElement {
           transition: none !important;
         }
       }
+      /* POPUP TABS NAVIGATION */
+      .popup-tabs {
+        display: flex;
+        background: rgba(128, 128, 128, 0.12);
+        padding: 4px;
+        border-radius: 14px;
+        gap: 4px;
+        margin-bottom: 14px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .popup-tab {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: transparent;
+        border: none;
+        color: var(--secondary-text-color);
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: none;
+        box-sizing: border-box;
+      }
+      .popup-tab ha-icon {
+        --mdc-icon-size: 16px;
+      }
+      .popup-tab:hover {
+        color: var(--primary-text-color);
+        background: rgba(128, 128, 128, 0.15);
+      }
+      .popup-tab.active-tab {
+        background: var(--card-background-color, #1c1c1e);
+        color: var(--primary-color, #3b82f6);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      }
+
+      /* TEMPERATURE CONTROLLER MODE DROPDOWN */
+      .temp-mode-dropdown-container {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(128, 128, 128, 0.12);
+        padding: 3px 8px 3px 10px;
+        border-radius: 20px;
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+        box-sizing: border-box;
+      }
+      .temp-mode-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--secondary-text-color);
+      }
+      .temp-mode-dropdown-wrapper {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .temp-mode-dropdown-wrapper ha-icon {
+        --mdc-icon-size: 16px;
+        color: var(--primary-color, #3b82f6);
+      }
+      .temp-mode-select {
+        background: transparent;
+        border: none;
+        color: var(--primary-text-color);
+        font-size: 0.82rem;
+        font-weight: 700;
+        outline: none;
+        cursor: pointer;
+        padding-right: 4px;
+      }
+      .temp-mode-select option {
+        background: var(--ha-card-background, #1c1c1e);
+        color: var(--primary-text-color);
+      }
+      .native-temp-card.is-mode-off {
+        opacity: 0.85;
+      }
+      .select-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+      }
+      .popup-select-input {
+        background: var(--card-background-color, rgba(128, 128, 128, 0.15));
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.15));
+        border-radius: 8px;
+        padding: 6px 10px;
+        color: var(--primary-text-color);
+        font-size: 0.85rem;
+        outline: none;
+        cursor: pointer;
+        max-width: 180px;
+        box-sizing: border-box;
+      }
+      .popup-select-input option {
+        background: var(--ha-card-background, #1c1c1e);
+        color: var(--primary-text-color);
+      }
+
     `;
   }
 }
