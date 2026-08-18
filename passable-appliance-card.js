@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.9.8
+ * Version: 1.9.9
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.9.8";
+const CARD_VERSION = "1.9.9";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -382,6 +382,147 @@ class PassableApplianceCard extends LitElement {
     this.hass.callService("homeassistant", "toggle", { entity_id });
   }
 
+  _findEntityBySuffix(suffix) {
+    if (!this.hass || !this.hass.states) return null;
+    const p = this.config ? this.config.device_prefix : "";
+    if (p && this.hass.states[`sensor.${p}_${suffix}`]) {
+      return this.hass.states[`sensor.${p}_${suffix}`];
+    }
+    for (const [entityId, stateObj] of Object.entries(this.hass.states)) {
+      if (entityId.startsWith("sensor.") && entityId.endsWith(`_${suffix}`)) {
+        if (!p || entityId.includes(p)) {
+          return stateObj;
+        }
+      }
+    }
+    for (const [entityId, stateObj] of Object.entries(this.hass.states)) {
+      if (entityId.startsWith("sensor.") && entityId.endsWith(`_${suffix}`)) {
+        return stateObj;
+      }
+    }
+    return null;
+  }
+
+  _getFridgeFreezerLimits(typeName) {
+    const c = this.config || {};
+    let minEntity = null;
+    let maxEntity = null;
+    let defaultMin = 34;
+    let defaultMax = 42;
+
+    if (typeName === "fridge") {
+      minEntity = c.fridge_min_entity ? this._getEntity(c.fridge_min_entity) : this._findEntityBySuffix("setpoint_limits_fridge_min");
+      maxEntity = c.fridge_max_entity ? this._getEntity(c.fridge_max_entity) : this._findEntityBySuffix("setpoint_limits_fridge_max");
+      defaultMin = 34;
+      defaultMax = 42;
+    } else {
+      minEntity = c.freezer_min_entity ? this._getEntity(c.freezer_min_entity) : this._findEntityBySuffix("setpoint_limits_freezer_min");
+      maxEntity = c.freezer_max_entity ? this._getEntity(c.freezer_max_entity) : this._findEntityBySuffix("setpoint_limits_freezer_max");
+      defaultMin = -6;
+      defaultMax = 5;
+    }
+
+    const minVal = (minEntity && minEntity.state !== "unavailable" && minEntity.state !== "unknown")
+      ? parseFloat(minEntity.state)
+      : defaultMin;
+    const maxVal = (maxEntity && maxEntity.state !== "unavailable" && maxEntity.state !== "unknown")
+      ? parseFloat(maxEntity.state)
+      : defaultMax;
+
+    return { min: Math.round(minVal), max: Math.round(maxVal) };
+  }
+
+  _startHold(entityId, delta, min, max, step, e) {
+    this._wasHolding = false;
+    this._stopHold(entityId);
+
+    const currentVal = (this._localTemps && this._localTemps[entityId] !== undefined)
+      ? this._localTemps[entityId]
+      : this._getTargetTemp(entityId, min);
+
+    let nextVal = Math.max(min, Math.min(max, currentVal + delta));
+    if (!this._localTemps) this._localTemps = {};
+    this._localTemps[entityId] = nextVal;
+    this._fireHaptic("light");
+    this.requestUpdate();
+
+    this._holdTimeout = setTimeout(() => {
+      this._wasHolding = true;
+      this._holdInterval = setInterval(() => {
+        const cur = this._localTemps[entityId] !== undefined ? this._localTemps[entityId] : nextVal;
+        const updated = Math.max(min, Math.min(max, cur + delta));
+        if (updated !== cur) {
+          this._localTemps[entityId] = updated;
+          this._fireHaptic("selection");
+          this.requestUpdate();
+        }
+      }, 75);
+    }, 300);
+  }
+
+  _stopHold(entityId) {
+    if (this._holdTimeout) {
+      clearTimeout(this._holdTimeout);
+      this._holdTimeout = null;
+    }
+    if (this._holdInterval) {
+      clearInterval(this._holdInterval);
+      this._holdInterval = null;
+    }
+    if (this._wasHolding && this._localTemps && this._localTemps[entityId] !== undefined) {
+      const finalVal = this._localTemps[entityId];
+      this._setTemperature(entityId, finalVal);
+      setTimeout(() => {
+        if (this._localTemps) delete this._localTemps[entityId];
+      }, 1500);
+    }
+  }
+
+  _adjustTemp(entityId, delta, min, max) {
+    const cur = (this._localTemps && this._localTemps[entityId] !== undefined)
+      ? this._localTemps[entityId]
+      : this._getTargetTemp(entityId, min);
+    const updated = Math.max(min, Math.min(max, cur + delta));
+    if (!this._localTemps) this._localTemps = {};
+    this._localTemps[entityId] = updated;
+    this._setTemperature(entityId, updated);
+    this.requestUpdate();
+    setTimeout(() => {
+      if (this._localTemps) delete this._localTemps[entityId];
+    }, 1500);
+  }
+
+  _onSliderInput(entityId, val) {
+    if (!this._localTemps) this._localTemps = {};
+    this._localTemps[entityId] = parseFloat(val);
+    this._fireHaptic("selection");
+    this.requestUpdate();
+  }
+
+  _onSliderChange(entityId, val) {
+    const num = parseFloat(val);
+    if (!this._localTemps) this._localTemps = {};
+    this._localTemps[entityId] = num;
+    this._setTemperature(entityId, num);
+    this.requestUpdate();
+    setTimeout(() => {
+      if (this._localTemps) delete this._localTemps[entityId];
+    }, 1500);
+  }
+
+  _getTargetTemp(entityId, fallback = 150) {
+    if (this._localTemps && this._localTemps[entityId] !== undefined) {
+      return this._localTemps[entityId];
+    }
+    if (!entityId || !this.hass || !this.hass.states[entityId]) return fallback;
+    const stateObj = this.hass.states[entityId];
+    if (stateObj.attributes && stateObj.attributes.temperature !== undefined) {
+      return parseFloat(stateObj.attributes.temperature);
+    }
+    const num = parseFloat(stateObj.state);
+    return isNaN(num) ? fallback : num;
+  }
+
   _setTemperature(entityId, temp) {
     if (!entityId || !this.hass) return;
     this._fireHaptic("medium");
@@ -407,13 +548,16 @@ class PassableApplianceCard extends LitElement {
       presets = []
     } = opts;
 
-    const numTarget = parseFloat(targetTemp) || min;
+    const activeTarget = (this._localTemps && this._localTemps[entityId] !== undefined)
+      ? this._localTemps[entityId]
+      : (parseFloat(targetTemp) || min);
+
     const numCurrent = (currentTemp !== null && !isNaN(parseFloat(currentTemp))) ? parseFloat(currentTemp) : null;
     const currentDisplay = numCurrent !== null ? Math.round(numCurrent) : "--";
-    const targetDisplay = Math.round(numTarget);
+    const targetDisplay = Math.round(activeTarget);
 
     const span = Math.max(1, max - min);
-    const progressPercent = Math.max(0, Math.min(100, ((numTarget - min) / span) * 100));
+    const progressPercent = Math.max(0, Math.min(100, ((activeTarget - min) / span) * 100));
 
     return html`
       <div class="native-temp-card ${isHeating ? "is-heating" : ""}">
@@ -435,9 +579,15 @@ class PassableApplianceCard extends LitElement {
         <div class="temp-dial-row">
           <button
             class="temp-stepper-btn"
-            @click=${() => this._setTemperature(entityId, Math.max(min, targetDisplay - step))}
+            @mousedown=${(e) => this._startHold(entityId, -step, min, max, step, e)}
+            @touchstart=${(e) => this._startHold(entityId, -step, min, max, step, e)}
+            @mouseup=${() => this._stopHold(entityId)}
+            @mouseleave=${() => this._stopHold(entityId)}
+            @touchend=${() => this._stopHold(entityId)}
+            @touchcancel=${() => this._stopHold(entityId)}
+            @click=${(e) => { e.preventDefault(); if (!this._wasHolding) this._adjustTemp(entityId, -step, min, max); }}
             aria-label="Decrease Temperature"
-            title="Decrease 5°"
+            title="Hold to decrease rapidly"
           >
             <ha-icon icon="mdi:minus"></ha-icon>
           </button>
@@ -458,22 +608,32 @@ class PassableApplianceCard extends LitElement {
 
           <button
             class="temp-stepper-btn"
-            @click=${() => this._setTemperature(entityId, Math.min(max, targetDisplay + step))}
+            @mousedown=${(e) => this._startHold(entityId, step, min, max, step, e)}
+            @touchstart=${(e) => this._startHold(entityId, step, min, max, step, e)}
+            @mouseup=${() => this._stopHold(entityId)}
+            @mouseleave=${() => this._stopHold(entityId)}
+            @touchend=${() => this._stopHold(entityId)}
+            @touchcancel=${() => this._stopHold(entityId)}
+            @click=${(e) => { e.preventDefault(); if (!this._wasHolding) this._adjustTemp(entityId, step, min, max); }}
             aria-label="Increase Temperature"
-            title="Increase 5°"
+            title="Hold to increase rapidly"
           >
             <ha-icon icon="mdi:plus"></ha-icon>
           </button>
         </div>
 
-        <!-- Range Progress Bar -->
-        <div class="temp-range-container">
-          <div class="temp-range-track">
-            <div
-              class="temp-range-fill ${isHeating ? "heating-glow" : ""}"
-              style="width: ${progressPercent}%;"
-            ></div>
-          </div>
+        <!-- Interactive Range Slider & Bounds -->
+        <div class="temp-slider-container">
+          <input
+            type="range"
+            class="temp-slider-input ${isHeating ? "is-heating" : ""}"
+            min="${min}"
+            max="${max}"
+            step="${step}"
+            .value="${targetDisplay}"
+            @input=${(e) => this._onSliderInput(entityId, e.target.value)}
+            @change=${(e) => this._onSliderChange(entityId, e.target.value)}
+          />
           <div class="temp-range-bounds">
             <span>${min}°</span>
             <span>${Math.round((min + max) / 2)}°</span>
@@ -483,7 +643,7 @@ class PassableApplianceCard extends LitElement {
 
         <!-- Presets -->
         ${presets && presets.length > 0 ? html`
-          <div class="preset-buttons" style="margin-top: 14px;">
+          <div class="preset-buttons" style="margin-top: 10px;">
             ${presets.map((p) => html`
               <button
                 class="preset-button ${targetDisplay === p.temp ? "active-preset" : ""}"
@@ -498,7 +658,6 @@ class PassableApplianceCard extends LitElement {
       </div>
     `;
   }
-
   _toggleRecircSettings(recircEntityId) {
     this._fireHaptic("light");
     this._showRecircSettings = !this._showRecircSettings;
@@ -626,6 +785,18 @@ class PassableApplianceCard extends LitElement {
     }
 
     return "refrigerator";
+  }
+
+  async _showFridgePopup() {
+    this._popup = "fridge";
+    this._embeddedCard = null;
+    await this.updateComplete;
+  }
+
+  async _showFreezerPopup() {
+    this._popup = "freezer";
+    this._embeddedCard = null;
+    await this.updateComplete;
   }
 
   async _showDispenserPopup() {
@@ -885,7 +1056,7 @@ class PassableApplianceCard extends LitElement {
             <div class="fridge-door fridge-right-door ${doorInfo.isRightOpen ? "door-open" : ""}">
               <div class="fridge-handle right-handle"></div>
               <div class="right-door-content">
-                <div class="temp-display fridge-temp" @click=${() => this._showMoreInfo(c.fridge_control)}>
+                <div class="temp-display fridge-temp" @click=${() => this._showFridgePopup()}>
                   <span class="temp-value">${fridgeTemp.state !== "unavailable" ? fridgeTemp.state : "35"}°</span>
                   <span class="temp-setpoint">Set: ${fridgeSetTemp}°</span>
                 </div>
@@ -894,7 +1065,7 @@ class PassableApplianceCard extends LitElement {
           </div>
 
           <!-- Bottom Freezer Drawer -->
-          <div class="fridge-freezer-drawer ${doorInfo.isFreezerOpen ? "door-open" : ""}" @click=${() => this._showMoreInfo(c.freezer_control)}>
+          <div class="fridge-freezer-drawer ${doorInfo.isFreezerOpen ? "door-open" : ""}" @click=${() => this._showFreezerPopup()}>
             <div class="freezer-handle"></div>
             <div class="temp-display freezer-temp">
               <span class="temp-value">${freezerTemp.state !== "unavailable" ? freezerTemp.state : "0"}°</span>
@@ -909,169 +1080,357 @@ class PassableApplianceCard extends LitElement {
   }
 
   _renderRefrigeratorPopup() {
-    if (this._popup !== "dispenser") return html``;
+    if (!this._popup) return html``;
     const c = this.config || {};
     const p = c.device_prefix;
-    const dispenserControl = c.dispenser_control;
-    const dispenserObj = dispenserControl ? this._getEntity(dispenserControl) : null;
-    const iceMakerId = c.ice_maker_control || (p ? `switch.${p}_ice_maker_control` : null);
-    const iceMaker = this._getEntity(iceMakerId);
-    const hotWaterStatus = this._getEntity(c.hot_water_status);
-    const hotWaterTime = this._getEntity(c.hot_water_status_time);
-    const hotWaterCurrent = this._getEntity(c.hot_water_status_current_temp);
-    const hotWaterSet = this._getEntity(c.hot_water_set_temp);
-    const filterInfo = this._getWaterFilterInfo();
+    const doorInfo = this._getDoorStatusInfo();
 
-    const turboCoolId = c.turbo_cool_switch || (p ? `switch.${p}_turbo_cool_status` : null);
-    const turboFreezeId = c.turbo_freeze_switch || (p ? `switch.${p}_turbo_freeze_status` : null);
-    const sabbathId = c.sabbath_mode_switch || (p ? `switch.${p}_sabbath_mode` : null);
+    // 1. REFRIGERATOR SETPOINT POPUP
+    if (this._popup === "fridge") {
+      const fridgeControl = c.fridge_control || (p ? `water_heater.${p}_fridge` : null);
+      const fridgeObj = fridgeControl ? this._getEntity(fridgeControl) : null;
+      const fridgeTemp = this._getEntity(c.fridge_temp_current || (p ? `sensor.${p}_current_temperature_fridge` : null));
+      const turboCoolId = c.turbo_cool_switch || (p ? `switch.${p}_turbo_cool_status` : null);
+      const sabbathId = c.sabbath_mode_switch || (p ? `switch.${p}_sabbath_mode` : null);
 
-    const isHeating = hotWaterStatus.state === "Heating";
-    const statusText = hotWaterStatus.state !== "unavailable" ? hotWaterStatus.state : "Not Heating";
-    const timeRemaining = (isHeating && hotWaterTime.state !== "Off" && hotWaterTime.state !== "unavailable") ? hotWaterTime.state : null;
+      const limits = this._getFridgeFreezerLimits("fridge");
+      const currentTemp = fridgeTemp.state !== "unavailable" && fridgeTemp.state !== "unknown" ? parseFloat(fridgeTemp.state) : null;
+      const targetTemp = fridgeObj?.attributes?.temperature ?? (currentTemp || 37);
 
-    const currentTemp = hotWaterCurrent.state !== "unavailable" && hotWaterCurrent.state !== "unknown"
-      ? parseFloat(hotWaterCurrent.state)
-      : (dispenserObj?.attributes?.current_temperature ?? null);
+      const isDoorOpen = doorInfo.isLeftOpen || doorInfo.isRightOpen;
+      const statusText = isDoorOpen ? "Door Open" : "Cooling";
 
-    const targetTemp = dispenserObj?.attributes?.temperature ?? (hotWaterSet.state !== "unavailable" ? parseFloat(hotWaterSet.state) : 150);
+      const presets = [
+        { label: "Coldest", icon: "mdi:snowflake", temp: limits.min },
+        { label: "Recommended", icon: "mdi:check-circle-outline", temp: 37 },
+        { label: "Eco", icon: "mdi:leaf", temp: limits.max },
+      ];
 
-    const presets = [
-      { label: "Cocoa", icon: "mdi:coffee-outline", temp: 150 },
-      { label: "Tea", icon: "mdi:tea", temp: 170 },
-      { label: "Soup", icon: "mdi:bowl-mix-outline", temp: 185 },
-    ];
-
-    return html`
-      <div class="popup-overlay" @click=${() => this._closePopup()}>
-        <div
-          class="popup-content"
-          @click=${(e) => e.stopPropagation()}
-          @touchstart=${this._handleTouchStart}
-          @touchmove=${this._handleTouchMove}
-          @touchend=${this._handleTouchEnd}
-        >
-          <div class="drag-handle"></div>
-          <div class="popup-header">
-            <button class="close-button" @click=${() => this._closePopup()} aria-label="Close">
-              <ha-icon icon="mdi:close"></ha-icon>
-            </button>
-            <h3>Dispenser Controls</h3>
-          </div>
-
-          <div class="popup-controls">
-            <!-- Native Lightweight Hot Water Controller -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <h4 style="margin: 0; font-size: 0.95rem;">Hot Water Heating</h4>
-              ${isHeating && c.hot_water_cancel_switch
-                ? html`
-                    <button
-                      class="floating-cancel-button"
-                      @click=${() => this._toggleEntity(c.hot_water_cancel_switch)}
-                      style="position: static; margin: 0; padding: 4px 10px; font-size: 0.8rem;"
-                    >
-                      Cancel Heating
-                    </button>
-                  `
-                : ""}
+      return html`
+        <div class="popup-overlay" @click=${() => this._closePopup()}>
+          <div
+            class="popup-content"
+            @click=${(e) => e.stopPropagation()}
+            @touchstart=${this._handleTouchStart}
+            @touchmove=${this._handleTouchMove}
+            @touchend=${this._handleTouchEnd}
+          >
+            <div class="drag-handle"></div>
+            <div class="popup-header">
+              <button class="close-button" @click=${() => this._closePopup()} aria-label="Close">
+                <ha-icon icon="mdi:close"></ha-icon>
+              </button>
+              <h3>Refrigerator Controls</h3>
             </div>
 
-            ${this._renderNativeTemperatureController({
-              entityId: dispenserControl,
-              targetTemp,
-              currentTemp,
-              isHeating,
-              statusText,
-              timeRemaining,
-              min: 90,
-              max: 190,
-              step: 5,
-              unit: "°F",
-              presets
-            })}
+            <div class="popup-controls">
+              ${this._renderNativeTemperatureController({
+                entityId: fridgeControl,
+                targetTemp,
+                currentTemp,
+                isHeating: false,
+                statusText,
+                min: limits.min,
+                max: limits.max,
+                step: 1,
+                unit: "°F",
+                presets
+              })}
 
-            <div class="divider" style="margin: 16px 0 12px 0;"></div>
+              <div class="divider" style="margin: 16px 0 12px 0;"></div>
 
-            <h4 style="margin: 0 0 10px 0; font-size: 0.95rem;">Appliance Controls</h4>
+              <h4 style="margin: 0 0 10px 0; font-size: 0.95rem;">Settings</h4>
+              <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                ${turboCoolId && this._hasEntity(turboCoolId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:snowflake"></ha-icon>
+                      <span class="control-label">Turbo Cool</span>
+                    </div>
+                    <ha-switch
+                      .checked=${this._isEntityOn(turboCoolId)}
+                      @change=${() => this._toggleEntity(turboCoolId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
 
-            <!-- Water Filter Card with Generous Bottom Separation -->
-            <div class="control-row filter-control-row" style="flex-direction: column; align-items: stretch; gap: 8px; margin-bottom: 16px; padding: 10px 12px; background: rgba(128,128,128,0.06); border-radius: 12px; border: 1px solid var(--divider-color, rgba(255,255,255,0.06));">
-              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                <div class="control-label-group">
-                  <ha-icon icon="${filterInfo.icon}" style="${filterInfo.colorStyle}"></ha-icon>
-                  <span class="control-label" style="font-weight: 500;">Water Filter</span>
-                </div>
-                <span class="control-value" style="${filterInfo.colorStyle}; font-weight: 600;">${filterInfo.formattedLabel}</span>
+                ${sabbathId && this._hasEntity(sabbathId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:candle"></ha-icon>
+                      <span class="control-label">Sabbath Mode</span>
+                    </div>
+                    <ha-switch
+                      .checked=${this._isEntityOn(sabbathId)}
+                      @change=${() => this._toggleEntity(sabbathId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
               </div>
-              ${filterInfo.percent !== null && !isNaN(filterInfo.percent) ? html`
-                <div style="width: 100%; height: 6px; background: rgba(128,128,128,0.2); border-radius: 3px; overflow: hidden; margin-top: 2px;">
-                  <div style="width: ${Math.max(0, Math.min(100, filterInfo.percent))}%; height: 100%; background: ${filterInfo.statusType === 'Expired' ? 'var(--error-color, #ef5350)' : filterInfo.statusType === 'Replace' ? 'var(--warning-color, #ffa726)' : 'var(--success-color, #4caf50)'}; border-radius: 3px; transition: width 0.4s ease;"></div>
-                </div>
-              ` : ""}
-            </div>
-
-            <!-- Other Appliance Toggles with Spacing -->
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-              ${this._hasEntity(iceMakerId) ? html`
-                <div class="control-row">
-                  <div class="control-label-group">
-                    <ha-icon icon="mdi:cube-outline"></ha-icon>
-                    <span class="control-label">Ice Maker</span>
-                  </div>
-                  <ha-switch
-                    .checked=${iceMaker.state === "on"}
-                    @change=${() => this._toggleEntity(iceMakerId)}
-                    class="popup-switch"
-                  ></ha-switch>
-                </div>
-              ` : ""}
-
-              ${turboCoolId && this._hasEntity(turboCoolId) ? html`
-                <div class="control-row">
-                  <div class="control-label-group">
-                    <ha-icon icon="mdi:snowflake"></ha-icon>
-                    <span class="control-label">Turbo Cool</span>
-                  </div>
-                  <ha-switch
-                    .checked=${this._isEntityOn(turboCoolId)}
-                    @change=${() => this._toggleEntity(turboCoolId)}
-                    class="popup-switch"
-                  ></ha-switch>
-                </div>
-              ` : ""}
-
-              ${turboFreezeId && this._hasEntity(turboFreezeId) ? html`
-                <div class="control-row">
-                  <div class="control-label-group">
-                    <ha-icon icon="mdi:snowflake-alert"></ha-icon>
-                    <span class="control-label">Turbo Freeze</span>
-                  </div>
-                  <ha-switch
-                    .checked=${this._isEntityOn(turboFreezeId)}
-                    @change=${() => this._toggleEntity(turboFreezeId)}
-                    class="popup-switch"
-                  ></ha-switch>
-                </div>
-              ` : ""}
-
-              ${sabbathId && this._hasEntity(sabbathId) ? html`
-                <div class="control-row">
-                  <div class="control-label-group">
-                    <ha-icon icon="mdi:candle"></ha-icon>
-                    <span class="control-label">Sabbath Mode</span>
-                  </div>
-                  <ha-switch
-                    .checked=${this._isEntityOn(sabbathId)}
-                    @change=${() => this._toggleEntity(sabbathId)}
-                    class="popup-switch"
-                  ></ha-switch>
-                </div>
-              ` : ""}
             </div>
           </div>
         </div>
-      </div>
-    `;
+      `;
+    }
+
+    // 2. FREEZER SETPOINT POPUP
+    if (this._popup === "freezer") {
+      const freezerControl = c.freezer_control || (p ? `water_heater.${p}_freezer` : null);
+      const freezerObj = freezerControl ? this._getEntity(freezerControl) : null;
+      const freezerTemp = this._getEntity(c.freezer_temp_current || (p ? `sensor.${p}_current_temperature_freezer` : null));
+      const turboFreezeId = c.turbo_freeze_switch || (p ? `switch.${p}_turbo_freeze_status` : null);
+      const iceMakerId = c.ice_maker_control || (p ? `switch.${p}_ice_maker_control` : null);
+      const iceMaker = this._getEntity(iceMakerId);
+
+      const limits = this._getFridgeFreezerLimits("freezer");
+      const currentTemp = freezerTemp.state !== "unavailable" && freezerTemp.state !== "unknown" ? parseFloat(freezerTemp.state) : null;
+      const targetTemp = freezerObj?.attributes?.temperature ?? (currentTemp || 0);
+
+      const isDoorOpen = doorInfo.isFreezerOpen;
+      const statusText = isDoorOpen ? "Drawer Open" : "Freezing";
+
+      const presets = [
+        { label: "Deep Freeze", icon: "mdi:snowflake-alert", temp: limits.min },
+        { label: "Standard", icon: "mdi:check-circle-outline", temp: 0 },
+        { label: "Soft Freeze", icon: "mdi:ice-cream", temp: limits.max },
+      ];
+
+      return html`
+        <div class="popup-overlay" @click=${() => this._closePopup()}>
+          <div
+            class="popup-content"
+            @click=${(e) => e.stopPropagation()}
+            @touchstart=${this._handleTouchStart}
+            @touchmove=${this._handleTouchMove}
+            @touchend=${this._handleTouchEnd}
+          >
+            <div class="drag-handle"></div>
+            <div class="popup-header">
+              <button class="close-button" @click=${() => this._closePopup()} aria-label="Close">
+                <ha-icon icon="mdi:close"></ha-icon>
+              </button>
+              <h3>Freezer Controls</h3>
+            </div>
+
+            <div class="popup-controls">
+              ${this._renderNativeTemperatureController({
+                entityId: freezerControl,
+                targetTemp,
+                currentTemp,
+                isHeating: false,
+                statusText,
+                min: limits.min,
+                max: limits.max,
+                step: 1,
+                unit: "°F",
+                presets
+              })}
+
+              <div class="divider" style="margin: 16px 0 12px 0;"></div>
+
+              <h4 style="margin: 0 0 10px 0; font-size: 0.95rem;">Settings</h4>
+              <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                ${this._hasEntity(iceMakerId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:cube-outline"></ha-icon>
+                      <span class="control-label">Ice Maker</span>
+                    </div>
+                    <ha-switch
+                      .checked=${iceMaker.state === "on"}
+                      @change=${() => this._toggleEntity(iceMakerId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
+
+                ${turboFreezeId && this._hasEntity(turboFreezeId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:snowflake-alert"></ha-icon>
+                      <span class="control-label">Turbo Freeze</span>
+                    </div>
+                    <ha-switch
+                      .checked=${this._isEntityOn(turboFreezeId)}
+                      @change=${() => this._toggleEntity(turboFreezeId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 3. DISPENSER POPUP
+    if (this._popup === "dispenser") {
+      const dispenserControl = c.dispenser_control;
+      const dispenserObj = dispenserControl ? this._getEntity(dispenserControl) : null;
+      const iceMakerId = c.ice_maker_control || (p ? `switch.${p}_ice_maker_control` : null);
+      const iceMaker = this._getEntity(iceMakerId);
+      const hotWaterStatus = this._getEntity(c.hot_water_status);
+      const hotWaterTime = this._getEntity(c.hot_water_status_time);
+      const hotWaterCurrent = this._getEntity(c.hot_water_status_current_temp);
+      const hotWaterSet = this._getEntity(c.hot_water_set_temp);
+      const filterInfo = this._getWaterFilterInfo();
+
+      const turboCoolId = c.turbo_cool_switch || (p ? `switch.${p}_turbo_cool_status` : null);
+      const turboFreezeId = c.turbo_freeze_switch || (p ? `switch.${p}_turbo_freeze_status` : null);
+      const sabbathId = c.sabbath_mode_switch || (p ? `switch.${p}_sabbath_mode` : null);
+
+      const isHeating = hotWaterStatus.state === "Heating";
+      const statusText = hotWaterStatus.state !== "unavailable" ? hotWaterStatus.state : "Not Heating";
+      const timeRemaining = (isHeating && hotWaterTime.state !== "Off" && hotWaterTime.state !== "unavailable") ? hotWaterTime.state : null;
+
+      const currentTemp = hotWaterCurrent.state !== "unavailable" && hotWaterCurrent.state !== "unknown"
+        ? parseFloat(hotWaterCurrent.state)
+        : (dispenserObj?.attributes?.current_temperature ?? null);
+
+      const targetTemp = dispenserObj?.attributes?.temperature ?? (hotWaterSet.state !== "unavailable" ? parseFloat(hotWaterSet.state) : 150);
+
+      const presets = [
+        { label: "Cocoa", icon: "mdi:coffee-outline", temp: 150 },
+        { label: "Tea", icon: "mdi:tea", temp: 170 },
+        { label: "Soup", icon: "mdi:bowl-mix-outline", temp: 185 },
+      ];
+
+      return html`
+        <div class="popup-overlay" @click=${() => this._closePopup()}>
+          <div
+            class="popup-content"
+            @click=${(e) => e.stopPropagation()}
+            @touchstart=${this._handleTouchStart}
+            @touchmove=${this._handleTouchMove}
+            @touchend=${this._handleTouchEnd}
+          >
+            <div class="drag-handle"></div>
+            <div class="popup-header">
+              <button class="close-button" @click=${() => this._closePopup()} aria-label="Close">
+                <ha-icon icon="mdi:close"></ha-icon>
+              </button>
+              <h3>Dispenser Controls</h3>
+            </div>
+
+            <div class="popup-controls">
+              <!-- Native Lightweight Hot Water Controller -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <h4 style="margin: 0; font-size: 0.95rem;">Hot Water Heating</h4>
+                ${isHeating && c.hot_water_cancel_switch
+                  ? html`
+                      <button
+                        class="floating-cancel-button"
+                        @click=${() => this._toggleEntity(c.hot_water_cancel_switch)}
+                        style="position: static; margin: 0; padding: 4px 10px; font-size: 0.8rem;"
+                      >
+                        Cancel Heating
+                      </button>
+                    `
+                  : ""}
+              </div>
+
+              ${this._renderNativeTemperatureController({
+                entityId: dispenserControl,
+                targetTemp,
+                currentTemp,
+                isHeating,
+                statusText,
+                timeRemaining,
+                min: 90,
+                max: 190,
+                step: 5,
+                unit: "°F",
+                presets
+              })}
+
+              <div class="divider" style="margin: 16px 0 12px 0;"></div>
+
+              <h4 style="margin: 0 0 10px 0; font-size: 0.95rem;">Appliance Controls</h4>
+
+              <!-- Water Filter Card with Generous Bottom Separation -->
+              <div class="control-row filter-control-row" style="flex-direction: column; align-items: stretch; gap: 8px; margin-bottom: 16px; padding: 10px 12px; background: rgba(128,128,128,0.06); border-radius: 12px; border: 1px solid var(--divider-color, rgba(255,255,255,0.06)); box-sizing: border-box; width: 100%;">
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                  <div class="control-label-group">
+                    <ha-icon icon="${filterInfo.icon}" style="${filterInfo.colorStyle}"></ha-icon>
+                    <span class="control-label" style="font-weight: 500;">Water Filter</span>
+                  </div>
+                  <span class="control-value" style="${filterInfo.colorStyle}; font-weight: 600;">${filterInfo.formattedLabel}</span>
+                </div>
+                ${filterInfo.percent !== null && !isNaN(filterInfo.percent) ? html`
+                  <div style="width: 100%; height: 6px; background: rgba(128,128,128,0.2); border-radius: 3px; overflow: hidden; margin-top: 2px;">
+                    <div style="width: ${Math.max(0, Math.min(100, filterInfo.percent))}%; height: 100%; background: ${filterInfo.statusType === 'Expired' ? 'var(--error-color, #ef5350)' : filterInfo.statusType === 'Replace' ? 'var(--warning-color, #ffa726)' : 'var(--success-color, #4caf50)'}; border-radius: 3px; transition: width 0.4s ease;"></div>
+                  </div>
+                ` : ""}
+              </div>
+
+              <!-- Other Appliance Toggles with Spacing -->
+              <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                ${this._hasEntity(iceMakerId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:cube-outline"></ha-icon>
+                      <span class="control-label">Ice Maker</span>
+                    </div>
+                    <ha-switch
+                      .checked=${iceMaker.state === "on"}
+                      @change=${() => this._toggleEntity(iceMakerId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
+
+                ${turboCoolId && this._hasEntity(turboCoolId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:snowflake"></ha-icon>
+                      <span class="control-label">Turbo Cool</span>
+                    </div>
+                    <ha-switch
+                      .checked=${this._isEntityOn(turboCoolId)}
+                      @change=${() => this._toggleEntity(turboCoolId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
+
+                ${turboFreezeId && this._hasEntity(turboFreezeId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:snowflake-alert"></ha-icon>
+                      <span class="control-label">Turbo Freeze</span>
+                    </div>
+                    <ha-switch
+                      .checked=${this._isEntityOn(turboFreezeId)}
+                      @change=${() => this._toggleEntity(turboFreezeId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
+
+                ${sabbathId && this._hasEntity(sabbathId) ? html`
+                  <div class="control-row">
+                    <div class="control-label-group">
+                      <ha-icon icon="mdi:candle"></ha-icon>
+                      <span class="control-label">Sabbath Mode</span>
+                    </div>
+                    <ha-switch
+                      .checked=${this._isEntityOn(sabbathId)}
+                      @change=${() => this._toggleEntity(sabbathId)}
+                      class="popup-switch"
+                    ></ha-switch>
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return html``;
   }
 
     // ==========================================
@@ -4156,6 +4515,9 @@ class PassableApplianceCard extends LitElement {
         flex-direction: column;
         gap: 12px;
         transition: all 0.3s ease;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
       }
       .native-temp-card.is-heating {
         background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.08);
@@ -4167,6 +4529,7 @@ class PassableApplianceCard extends LitElement {
         justify-content: space-between;
         align-items: center;
         width: 100%;
+        box-sizing: border-box;
       }
       .heating-status-badge {
         display: inline-flex;
@@ -4179,6 +4542,7 @@ class PassableApplianceCard extends LitElement {
         letter-spacing: 0.04em;
         background: rgba(128, 128, 128, 0.12);
         color: var(--primary-text-color);
+        box-sizing: border-box;
       }
       .heating-status-badge.active-heat {
         background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.2);
@@ -4201,7 +4565,9 @@ class PassableApplianceCard extends LitElement {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 4px 12px;
+        padding: 4px 8px;
+        width: 100%;
+        box-sizing: border-box;
       }
       .temp-stepper-btn {
         width: 46px;
@@ -4214,7 +4580,11 @@ class PassableApplianceCard extends LitElement {
         align-items: center;
         justify-content: center;
         cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
         transition: transform 0.15s ease, background 0.2s ease;
+        box-sizing: border-box;
       }
       .temp-stepper-btn:active {
         transform: scale(0.92);
@@ -4229,6 +4599,7 @@ class PassableApplianceCard extends LitElement {
         flex-direction: column;
         align-items: center;
         text-align: center;
+        user-select: none;
       }
       .temp-sub-row {
         display: flex;
@@ -4273,33 +4644,112 @@ class PassableApplianceCard extends LitElement {
         color: var(--secondary-text-color);
         margin-top: 4px;
       }
-      .temp-range-container {
+      .temp-slider-container {
+        width: 100%;
+        box-sizing: border-box;
+        position: relative;
         display: flex;
         flex-direction: column;
         gap: 4px;
-        width: 100%;
+        margin: 2px 0;
       }
-      .temp-range-track {
+      .temp-slider-input {
+        -webkit-appearance: none;
+        appearance: none;
         width: 100%;
-        height: 6px;
+        height: 8px;
+        border-radius: 4px;
         background: rgba(128, 128, 128, 0.2);
-        border-radius: 3px;
-        overflow: hidden;
+        outline: none;
+        cursor: pointer;
+        transition: background 0.2s ease;
+        margin: 6px 0 2px;
+        box-sizing: border-box;
       }
-      .temp-range-fill {
-        height: 100%;
+      .temp-slider-input::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
         background: var(--primary-color, #3b82f6);
-        border-radius: 3px;
-        transition: width 0.3s ease;
+        border: 2px solid #ffffff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+        transition: transform 0.15s ease, background-color 0.2s ease;
       }
-      .temp-range-fill.heating-glow {
-        background: linear-gradient(90deg, var(--info-color, #3b82f6), var(--warning-color, #ff9800), var(--error-color, #f44336));
+      .temp-slider-input::-webkit-slider-thumb:hover,
+      .temp-slider-input::-webkit-slider-thumb:active {
+        transform: scale(1.18);
+        background: var(--primary-color, #2563eb);
+      }
+      .temp-slider-input::-moz-range-thumb {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--primary-color, #3b82f6);
+        border: 2px solid #ffffff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+        transition: transform 0.15s ease, background-color 0.2s ease;
+      }
+      .temp-slider-input.is-heating::-webkit-slider-thumb {
+        background: var(--warning-color, #ff9800);
+      }
+      .temp-slider-input.is-heating::-moz-range-thumb {
+        background: var(--warning-color, #ff9800);
       }
       .temp-range-bounds {
         display: flex;
         justify-content: space-between;
         font-size: 0.72rem;
         color: var(--secondary-text-color);
+        box-sizing: border-box;
+        width: 100%;
+        padding: 0 2px;
+      }
+      .filter-control-row {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+      }
+      .popup-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        box-sizing: border-box;
+        overflow-x: hidden;
+      }
+      .popup-content {
+        background: var(--ha-card-background, var(--card-background-color, #1c1c1e));
+        border-radius: 24px;
+        padding: 16px 20px 20px;
+        width: 100%;
+        max-width: 440px;
+        max-height: 90vh;
+        overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+        box-sizing: border-box;
+      }
+      .popup-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 4px 0;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow-x: hidden;
       }
       .preset-button.active-preset {
         background: var(--primary-color, #3b82f6) !important;
