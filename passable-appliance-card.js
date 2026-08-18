@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.9.6
+ * Version: 1.9.7
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.9.6";
+const CARD_VERSION = "1.9.7";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -3984,6 +3984,168 @@ class PassableApplianceCard extends LitElement {
       }
       .close-button:hover { background-color: rgba(255, 255, 255, 0.1); }
       .close-button ha-icon { --mdc-icon-size: 20px; }
+
+      /* NATIVE TEMPERATURE CONTROLLER */
+      .native-temp-card {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+        border-radius: 16px;
+        padding: 14px 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        transition: all 0.3s ease;
+      }
+      .native-temp-card.is-heating {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.08);
+        border-color: rgba(var(--rgb-warning-color, 255, 152, 0), 0.35);
+        box-shadow: 0 4px 16px rgba(var(--rgb-warning-color, 255, 152, 0), 0.12);
+      }
+      .temp-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+      }
+      .heating-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        background: rgba(128, 128, 128, 0.12);
+        color: var(--primary-text-color);
+      }
+      .heating-status-badge.active-heat {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.2);
+        color: var(--warning-color, #ff9800);
+        animation: pulse-heat 2s infinite ease-in-out;
+      }
+      @keyframes pulse-heat {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.75; }
+      }
+      .time-remaining-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.78rem;
+        color: var(--secondary-text-color);
+        font-weight: 500;
+      }
+      .temp-dial-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 12px;
+      }
+      .temp-stepper-btn {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: var(--card-background-color, rgba(128, 128, 128, 0.15));
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.15));
+        color: var(--primary-text-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: transform 0.15s ease, background 0.2s ease;
+      }
+      .temp-stepper-btn:active {
+        transform: scale(0.92);
+        background: var(--primary-color, #3b82f6);
+        color: #fff;
+      }
+      .temp-stepper-btn ha-icon {
+        --mdc-icon-size: 24px;
+      }
+      .temp-dial-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .temp-sub-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 2px;
+      }
+      .temp-sub-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--secondary-text-color);
+      }
+      .temp-sub-val {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--info-color, #3b82f6);
+      }
+      .temp-main-display {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        line-height: 1;
+      }
+      .temp-main-number {
+        font-size: 2.8rem;
+        font-weight: 800;
+        color: var(--primary-text-color);
+        letter-spacing: -0.02em;
+      }
+      .temp-main-unit {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--secondary-text-color);
+        margin-left: 2px;
+        margin-top: 4px;
+      }
+      .temp-main-caption {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--secondary-text-color);
+        margin-top: 4px;
+      }
+      .temp-range-container {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+      }
+      .temp-range-track {
+        width: 100%;
+        height: 6px;
+        background: rgba(128, 128, 128, 0.2);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .temp-range-fill {
+        height: 100%;
+        background: var(--primary-color, #3b82f6);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+      }
+      .temp-range-fill.heating-glow {
+        background: linear-gradient(90deg, var(--info-color, #3b82f6), var(--warning-color, #ff9800), var(--error-color, #f44336));
+      }
+      .temp-range-bounds {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.72rem;
+        color: var(--secondary-text-color);
+      }
+      .preset-button.active-preset {
+        background: var(--primary-color, #3b82f6) !important;
+        color: #ffffff !important;
+        border-color: var(--primary-color, #3b82f6) !important;
+        box-shadow: 0 2px 8px rgba(var(--rgb-primary-color, 59, 130, 246), 0.35);
+      }
 
       .control-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 34px; margin: 2px 0; }
       .control-label-group { display: flex; align-items: center; gap: 10px; color: var(--primary-text-color); }
