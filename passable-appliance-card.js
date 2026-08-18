@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.1.1
+ * Version: 2.1.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "2.1.1";
+const CARD_VERSION = "2.1.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -206,36 +206,34 @@ class PassableApplianceCard extends LitElement {
     const p = c.device_prefix;
 
     // Dedicated percent sensor check
-    const percentEntityId = c.water_filter_percent || (p ? `sensor.${p}_water_filter_status_percent_remaining` : null);
+    const percentEntityId = c.water_filter_percent || this._findEntityBySuffix("water_filter_status_percent_remaining", "sensor")?.entity_id || (p ? `sensor.${p}_water_filter_status_percent_remaining` : null);
     const percentObj = (percentEntityId && this.hass && this.hass.states && this.hass.states[percentEntityId]) ? this._getEntity(percentEntityId) : null;
     let percentVal = (percentObj && percentObj.state !== "unavailable" && percentObj.state !== "unknown") ? parseFloat(percentObj.state) : null;
 
     // Dedicated days sensor check
-    const daysEntityId = c.water_filter_days || (p ? `sensor.${p}_water_filter_status_days_remaining` : null);
+    const daysEntityId = c.water_filter_days || this._findEntityBySuffix("water_filter_status_days_remaining", "sensor")?.entity_id || (p ? `sensor.${p}_water_filter_status_days_remaining` : null);
     const daysObj = (daysEntityId && this.hass && this.hass.states && this.hass.states[daysEntityId]) ? this._getEntity(daysEntityId) : null;
     let daysVal = (daysObj && daysObj.state !== "unavailable" && daysObj.state !== "unknown") ? parseInt(daysObj.state, 10) : null;
 
-    // Main water filter status entity
-    const mainEntityId = c.water_filter_status || (p ? `sensor.${p}_water_filter_status` : null);
-    const mainObj = (mainEntityId && this.hass && this.hass.states && this.hass.states[mainEntityId]) ? this._getEntity(mainEntityId) : null;
-    const rawState = mainObj && mainObj.state ? String(mainObj.state).trim() : "";
+    // Main water filter status sensor
+    const filterEntityId = c.water_filter_status || this._findEntityBySuffix("water_filter_status", "sensor")?.entity_id || (p ? `sensor.${p}_water_filter_status` : null);
+    const filterObj = (filterEntityId && this.hass && this.hass.states && this.hass.states[filterEntityId]) ? this._getEntity(filterEntityId) : null;
 
-    let statusType = "Good"; // "Good", "Replace", "Expired"
+    let statusType = "Good";
     let statusDisplay = "Good";
 
-    if (rawState) {
-      const lower = rawState.toLowerCase();
-      // Check for Python namedtuple / object string representation: FridgeWaterFilterStatus(status=<ErdFilterStatus.GOOD: '00'>, percent_remaining=92, days_remaining=169, ...)
-      if (rawState.includes("FridgeWaterFilterStatus") || rawState.includes("ErdFilterStatus")) {
-        const percentMatch = rawState.match(/percent_remaining\s*=\s*(\d+)/i);
-        if (percentMatch && (percentVal === null || isNaN(percentVal))) {
-          percentVal = parseFloat(percentMatch[1]);
+    if (filterObj && filterObj.state && filterObj.state !== "unavailable" && filterObj.state !== "unknown") {
+      const rawState = String(filterObj.state);
+
+      if (rawState.includes("FridgeWaterFilterStatus") || rawState.includes("percent_remaining")) {
+        const pctMatch = rawState.match(/percent_remaining\s*=\s*(\d+)/i);
+        if (pctMatch && (percentVal === null || isNaN(percentVal))) {
+          percentVal = parseFloat(pctMatch[1]);
         }
         const daysMatch = rawState.match(/days_remaining\s*=\s*(\d+)/i);
         if (daysMatch && (daysVal === null || isNaN(daysVal))) {
           daysVal = parseInt(daysMatch[1], 10);
         }
-        // Specifically match the status enum value inside status=<ErdFilterStatus.GOOD: '00'>, status=ErdFilterStatus.GOOD, etc.
         const statusMatch = rawState.match(/status\s*=\s*(?:<ErdFilterStatus\.)?([A-Z0-9_]+)/i);
         const statusKey = statusMatch ? statusMatch[1].toUpperCase() : "";
 
@@ -249,61 +247,66 @@ class PassableApplianceCard extends LitElement {
           statusType = "Good";
           statusDisplay = "Good";
         }
-      } else if (lower === "good" || lower === "normal" || lower === "ok" || lower === "0" || lower === "00") {
-        statusType = "Good";
-        statusDisplay = "Good";
-      } else if (lower === "replace" || lower === "warning" || lower === "order" || lower === "replace soon" || lower === "1" || lower === "01") {
-        statusType = "Replace";
-        statusDisplay = "Replace Soon";
-      } else if (lower === "expired" || lower === "bad" || lower === "2" || lower === "02") {
-        statusType = "Expired";
-        statusDisplay = "Expired";
-      } else if (rawState !== "unavailable" && rawState !== "unknown") {
-        statusDisplay = rawState;
+      } else {
+        const lowerState = rawState.toLowerCase();
+        if (lowerState.includes("expired") || lowerState === "error" || lowerState === "problem") {
+          statusType = "Expired";
+          statusDisplay = "Expired";
+        } else if (lowerState.includes("replace") || lowerState.includes("order") || lowerState.includes("warn")) {
+          statusType = "Replace";
+          statusDisplay = "Replace Soon";
+        } else if (lowerState.includes("good") || lowerState.includes("ok") || lowerState.includes("normal")) {
+          statusType = "Good";
+          statusDisplay = "Good";
+        } else {
+          const numState = parseFloat(rawState);
+          if (!isNaN(numState) && percentVal === null) {
+            percentVal = numState;
+          }
+        }
       }
     }
 
     if (percentVal !== null && !isNaN(percentVal)) {
-      if (percentVal <= 0 && statusType === "Good") {
+      if (percentVal <= 0) {
         statusType = "Expired";
         statusDisplay = "Expired";
-      } else if (percentVal <= 10 && statusType === "Good") {
+      } else if (percentVal <= 10 && statusType !== "Expired") {
         statusType = "Replace";
         statusDisplay = "Replace Soon";
+      } else if (percentVal > 10 && (statusType === "Expired" || statusType === "Replace")) {
+        statusType = "Good";
+        statusDisplay = "Good";
       }
     }
 
+    let icon = "mdi:water-check";
     let colorStyle = "color: var(--success-color, #4caf50);";
-    let icon = "mdi:filter-check";
-    let chipBadge = null;
-
     if (statusType === "Expired") {
+      icon = "mdi:water-alert";
       colorStyle = "color: var(--error-color, #ef5350);";
-      icon = "mdi:filter-remove-outline";
-      chipBadge = { label: "FILTER EXPIRED", class: "active-alert" };
     } else if (statusType === "Replace") {
+      icon = "mdi:water-sync";
       colorStyle = "color: var(--warning-color, #ffa726);";
-      icon = "mdi:filter-outline";
-      chipBadge = { label: "REPLACE FILTER", class: "active-warning" };
     }
 
     let formattedLabel = statusDisplay;
     if (percentVal !== null && !isNaN(percentVal)) {
-      formattedLabel += ` (${Math.round(percentVal)}%)`;
+      formattedLabel = `${Math.round(percentVal)}%`;
+      if (daysVal !== null && !isNaN(daysVal) && daysVal > 0) {
+        formattedLabel += ` (${daysVal}d)`;
+      }
     } else if (daysVal !== null && !isNaN(daysVal)) {
-      formattedLabel += ` (${daysVal}d left)`;
+      formattedLabel = `${daysVal} days`;
     }
 
     return {
       statusType,
-      statusDisplay,
-      formattedLabel,
       percent: percentVal,
-      daysRemaining: daysVal,
-      colorStyle,
+      days: daysVal,
+      formattedLabel,
       icon,
-      chipBadge,
-      rawState,
+      colorStyle
     };
   }
 
@@ -311,12 +314,12 @@ class PassableApplianceCard extends LitElement {
     const c = this.config || {};
     const p = c.device_prefix;
 
-    const doorStatus = this._getEntity(c.door_status);
-    const doorLeft = this._getEntity(c.door_left || (p ? `binary_sensor.${p}_door_status_fridge_left` : null));
-    const doorRight = this._getEntity(c.door_right || (p ? `binary_sensor.${p}_door_status_fridge_right` : null));
-    const doorFreezer = this._getEntity(c.door_freezer || (p ? `binary_sensor.${p}_door_status_freezer` : null));
-    const doorDrawer = this._getEntity(c.door_drawer || (p ? `binary_sensor.${p}_door_status_drawer` : null));
-    const doorAny = this._getEntity(c.door_any || (p ? `binary_sensor.${p}_door_status_any_open` : null));
+    const doorStatus = this._getEntity(c.door_status || this._findEntityBySuffix("door_status", "sensor")?.entity_id);
+    const doorLeft = this._getEntity(c.door_left || this._findEntityBySuffix("door_status_fridge_left", "binary_sensor")?.entity_id || (p ? `binary_sensor.${p}_door_status_fridge_left` : null));
+    const doorRight = this._getEntity(c.door_right || this._findEntityBySuffix("door_status_fridge_right", "binary_sensor")?.entity_id || (p ? `binary_sensor.${p}_door_status_fridge_right` : null));
+    const doorFreezer = this._getEntity(c.door_freezer || this._findEntityBySuffix("door_status_freezer", "binary_sensor")?.entity_id || (p ? `binary_sensor.${p}_door_status_freezer` : null));
+    const doorDrawer = this._getEntity(c.door_drawer || this._findEntityBySuffix("door_status_drawer", "binary_sensor")?.entity_id || (p ? `binary_sensor.${p}_door_status_drawer` : null));
+    const doorAny = this._getEntity(c.door_any || this._findEntityBySuffix("door_status_any_open", "binary_sensor")?.entity_id || (p ? `binary_sensor.${p}_door_status_any_open` : null));
 
     const isLeftOpen = doorLeft.state === "on" || doorLeft.state === "open";
     const isRightOpen = doorRight.state === "on" || doorRight.state === "open";
@@ -327,32 +330,26 @@ class PassableApplianceCard extends LitElement {
     const legacyState = (doorStatus && doorStatus.state) ? String(doorStatus.state).trim().toLowerCase() : "";
     const isLegacyOpen = legacyState === "fridge open" || legacyState === "freezer open" || legacyState === "all open" || legacyState === "open" || legacyState === "on";
 
-    const isOpen = isLeftOpen || isRightOpen || isFreezerOpen || isDrawerOpen || isAnyBinaryOpen || isLegacyOpen;
+    const isAnyOpen = isAnyBinaryOpen || isLeftOpen || isRightOpen || isFreezerOpen || isDrawerOpen || isLegacyOpen;
 
-    let doorText = "Closed";
-    if ((isLeftOpen && isRightOpen && isFreezerOpen) || legacyState === "all open") {
-      doorText = "All Open";
-    } else if (isLeftOpen && isRightOpen) {
-      doorText = "Fridge Open";
-    } else if (isLeftOpen) {
-      doorText = "Left Door Open";
-    } else if (isRightOpen) {
-      doorText = "Right Door Open";
-    } else if (isFreezerOpen || legacyState === "freezer open") {
-      doorText = "Freezer Open";
-    } else if (isDrawerOpen) {
-      doorText = "Drawer Open";
-    } else if (isLegacyOpen) {
-      doorText = doorStatus.state;
+    let displayLabel = "Closed";
+    if (isAnyOpen) {
+      if (isLeftOpen && isRightOpen) displayLabel = "Both Doors Open";
+      else if (isLeftOpen) displayLabel = "Left Door Open";
+      else if (isRightOpen) displayLabel = "Right Door Open";
+      else if (isFreezerOpen) displayLabel = "Freezer Open";
+      else if (isDrawerOpen) displayLabel = "Drawer Open";
+      else if (isLegacyOpen) displayLabel = "Door Open";
+      else displayLabel = "Open";
     }
 
     return {
-      isOpen,
-      isLeftOpen: isLeftOpen || (legacyState === "fridge open" && !isRightOpen),
+      isAnyOpen,
+      isLeftOpen,
       isRightOpen,
-      isFreezerOpen: isFreezerOpen || legacyState === "freezer open",
+      isFreezerOpen,
       isDrawerOpen,
-      doorText,
+      displayLabel
     };
   }
 
@@ -382,25 +379,50 @@ class PassableApplianceCard extends LitElement {
     this.hass.callService("homeassistant", "toggle", { entity_id });
   }
 
-  _findEntityBySuffix(suffix) {
+  _findEntityBySuffix(suffix, domain = null) {
     if (!this.hass || !this.hass.states) return null;
     const p = this.config ? this.config.device_prefix : "";
-    if (p && this.hass.states[`sensor.${p}_${suffix}`]) {
-      return this.hass.states[`sensor.${p}_${suffix}`];
+    const pClean = p ? p.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase() : "";
+
+    // 1. Direct match with exact prefix
+    if (p) {
+      const candidateDomains = domain ? [domain] : ["switch", "select", "sensor", "binary_sensor", "water_heater", "climate", "input_boolean"];
+      for (const d of candidateDomains) {
+        if (this.hass.states[`${d}.${p}_${suffix}`]) {
+          return this.hass.states[`${d}.${p}_${suffix}`];
+        }
+      }
     }
+
+    // 2. Search all states matching suffix and domain with prefix substring filter
     for (const [entityId, stateObj] of Object.entries(this.hass.states)) {
-      if (entityId.startsWith("sensor.") && entityId.endsWith(`_${suffix}`)) {
-        if (!p || entityId.includes(p)) {
+      const [entDomain, entName] = entityId.split(".");
+      if (domain && entDomain !== domain) continue;
+      if (entName === suffix || entName.endsWith(`_${suffix}`)) {
+        if (!pClean || entName.toLowerCase().includes(pClean)) {
           return stateObj;
         }
       }
     }
+
+    // 3. Fallback search across all entities without prefix filter
     for (const [entityId, stateObj] of Object.entries(this.hass.states)) {
-      if (entityId.startsWith("sensor.") && entityId.endsWith(`_${suffix}`)) {
+      const [entDomain, entName] = entityId.split(".");
+      if (domain && entDomain !== domain) continue;
+      if (entName === suffix || entName.endsWith(`_${suffix}`)) {
         return stateObj;
       }
     }
     return null;
+  }
+
+  _resolveEntity(configuredId, suffix, domain = null) {
+    if (configuredId && this.hass && this.hass.states && this.hass.states[configuredId]) {
+      return configuredId;
+    }
+    const found = this._findEntityBySuffix(suffix, domain);
+    if (found) return found.entity_id;
+    return configuredId;
   }
 
   _getFridgeFreezerLimits(typeName) {
@@ -1166,14 +1188,14 @@ class PassableApplianceCard extends LitElement {
             <!-- 1. DISPENSER TAB -->
             ${activeTab === "dispenser" ? html`
               ${(() => {
-                const dispenserControl = c.dispenser_control;
+                const dispenserControl = this._resolveEntity(c.dispenser_control, "dispenser", "water_heater");
                 const dispenserObj = dispenserControl ? this._getEntity(dispenserControl) : null;
-                const iceMakerId = c.ice_maker_control || this._findEntityBySuffix("ice_maker_control")?.entity_id || (p ? `switch.${p}_ice_maker_control` : null);
-                const iceBoostId = c.ice_boost_switch || this._findEntityBySuffix("fridge_ice_boost")?.entity_id || this._findEntityBySuffix("ice_boost")?.entity_id || (p ? `switch.${p}_fridge_ice_boost` : null);
-                const hotWaterStatus = this._getEntity(c.hot_water_status);
-                const hotWaterTime = this._getEntity(c.hot_water_status_time);
-                const hotWaterCurrent = this._getEntity(c.hot_water_status_current_temp);
-                const hotWaterSet = this._getEntity(c.hot_water_set_temp);
+                const iceMakerId = this._resolveEntity(c.ice_maker_control, "ice_maker_control", "switch");
+                const iceBoostId = this._resolveEntity(c.ice_boost_switch, "fridge_ice_boost", "switch") || this._resolveEntity(null, "ice_boost", "switch");
+                const hotWaterStatus = this._getEntity(this._resolveEntity(c.hot_water_status, "hot_water_status_status", "sensor") || this._resolveEntity(null, "hot_water_status", "sensor"));
+                const hotWaterTime = this._getEntity(this._resolveEntity(c.hot_water_status_time, "hot_water_status_time_until_ready", "sensor") || this._resolveEntity(null, "hot_water_status_time", "sensor"));
+                const hotWaterCurrent = this._getEntity(this._resolveEntity(c.hot_water_status_current_temp, "hot_water_status_current_temp", "sensor"));
+                const hotWaterSet = this._getEntity(this._resolveEntity(c.hot_water_set_temp, "hot_water_set_temp", "sensor"));
                 const filterInfo = this._getWaterFilterInfo();
 
                 const isHeating = hotWaterStatus.state === "Heating";
@@ -1277,11 +1299,11 @@ class PassableApplianceCard extends LitElement {
             <!-- 2. REFRIGERATOR TAB -->
             ${activeTab === "fridge" ? html`
               ${(() => {
-                const fridgeControl = c.fridge_control || (p ? `water_heater.${p}_fridge` : null);
+                const fridgeControl = this._resolveEntity(c.fridge_control, "fridge", "water_heater");
                 const fridgeObj = fridgeControl ? this._getEntity(fridgeControl) : null;
-                const fridgeTemp = this._getEntity(c.fridge_temp_current || (p ? `sensor.${p}_current_temperature_fridge` : null));
-                const turboCoolId = c.turbo_cool_switch || this._findEntityBySuffix("turbo_cool_status")?.entity_id || (p ? `switch.${p}_turbo_cool_status` : null);
-                const sabbathId = c.sabbath_mode_switch || this._findEntityBySuffix("sabbath_mode")?.entity_id || (p ? `switch.${p}_sabbath_mode` : null);
+                const fridgeTemp = this._getEntity(this._resolveEntity(c.fridge_temp_current, "current_temperature_fridge", "sensor"));
+                const turboCoolId = this._resolveEntity(c.turbo_cool_switch, "turbo_cool_status", "switch");
+                const sabbathId = this._resolveEntity(c.sabbath_mode_switch, "sabbath_mode", "switch");
 
                 const limits = this._getFridgeFreezerLimits("fridge");
                 const currentTemp = (fridgeTemp.state !== "unavailable" && fridgeTemp.state !== "unknown" && !isNaN(parseFloat(fridgeTemp.state)))
@@ -1352,12 +1374,12 @@ class PassableApplianceCard extends LitElement {
             <!-- 3. FREEZER TAB -->
             ${activeTab === "freezer" ? html`
               ${(() => {
-                const freezerControl = c.freezer_control || (p ? `water_heater.${p}_freezer` : null);
+                const freezerControl = this._resolveEntity(c.freezer_control, "freezer", "water_heater");
                 const freezerObj = freezerControl ? this._getEntity(freezerControl) : null;
-                const freezerTemp = this._getEntity(c.freezer_temp_current || (p ? `sensor.${p}_current_temperature_freezer` : null));
-                const turboFreezeId = c.turbo_freeze_switch || this._findEntityBySuffix("turbo_freeze_status")?.entity_id || (p ? `switch.${p}_turbo_freeze_status` : null);
-                const iceMakerId = c.ice_maker_control || this._findEntityBySuffix("ice_maker_control")?.entity_id || (p ? `switch.${p}_ice_maker_control` : null);
-                const iceBoostId = c.ice_boost_switch || this._findEntityBySuffix("fridge_ice_boost")?.entity_id || this._findEntityBySuffix("ice_boost")?.entity_id || (p ? `switch.${p}_fridge_ice_boost` : null);
+                const freezerTemp = this._getEntity(this._resolveEntity(c.freezer_temp_current, "current_temperature_freezer", "sensor"));
+                const turboFreezeId = this._resolveEntity(c.turbo_freeze_switch, "turbo_freeze_status", "switch");
+                const iceMakerId = this._resolveEntity(c.ice_maker_control, "ice_maker_control", "switch");
+                const iceBoostId = this._resolveEntity(c.ice_boost_switch, "fridge_ice_boost", "switch") || this._resolveEntity(null, "ice_boost", "switch");
 
                 const limits = this._getFridgeFreezerLimits("freezer");
                 const currentTemp = (freezerTemp.state !== "unavailable" && freezerTemp.state !== "unknown" && !isNaN(parseFloat(freezerTemp.state)))
@@ -1612,12 +1634,15 @@ class PassableApplianceCard extends LitElement {
 
     const activeTab = this._activeOvenTab || this._popupOven || "upper";
 
-    const controlLockId = ovenConfig.control_lock || this._findEntityBySuffix("control_lock")?.entity_id || (p ? `switch.${p}_control_lock` : null);
-    const shutoff12Id = ovenConfig.hour_12_shutoff || this._findEntityBySuffix("hour_12_shutoff_enabled")?.entity_id || (p ? `switch.${p}_hour_12_shutoff_enabled` : null);
-    const sabbathId = ovenConfig.sabbath_mode || this._findEntityBySuffix("sabbath_mode")?.entity_id || (p ? `switch.${p}_sabbath_mode` : null);
-    const soundLevelObj = this._findEntityBySuffix("sound_level");
-    const endToneObj = this._findEntityBySuffix("end_tone");
-    const clockFormatObj = this._findEntityBySuffix("clock_format");
+    const controlLockId = this._resolveEntity(ovenConfig.control_lock, "control_lock", "switch");
+    const shutoff12Id = this._resolveEntity(ovenConfig.hour_12_shutoff, "hour_12_shutoff_enabled", "switch");
+    const sabbathId = this._resolveEntity(ovenConfig.sabbath_mode, "sabbath_mode", "switch");
+    const soundLevelId = this._resolveEntity(ovenConfig.sound_level, "sound_level", "select");
+    const soundLevelObj = soundLevelId ? this._getEntity(soundLevelId) : null;
+    const endToneId = this._resolveEntity(ovenConfig.end_tone, "end_tone", "select");
+    const endToneObj = endToneId ? this._getEntity(endToneId) : null;
+    const clockFormatId = this._resolveEntity(ovenConfig.clock_format, "clock_format", "select");
+    const clockFormatObj = clockFormatId ? this._getEntity(clockFormatId) : null;
 
     return html`
       <div class="popup-overlay" @click=${() => this._closePopup()}>
@@ -1665,13 +1690,13 @@ class PassableApplianceCard extends LitElement {
             <!-- 1. UPPER OVEN TAB -->
             ${activeTab === "upper" ? html`
               ${(() => {
-                const controlEntity = ovenConfig.upper_control || this.config.upper_control || (p ? `water_heater.${p}_oven` : null);
+                const controlEntity = this._resolveEntity(ovenConfig.upper_control || this.config.upper_control, "oven", "water_heater");
                 const controlObj = controlEntity ? this._getEntity(controlEntity) : null;
-                const stateEntityId = ovenConfig.upper_state_entity || (p ? `sensor.${p}_current_state` : null);
+                const stateEntityId = this._resolveEntity(ovenConfig.upper_state_entity, "current_state", "sensor");
                 const ovenStateObj = this._getEntity(stateEntityId);
-                const rawTempId = ovenConfig.upper_raw_temp || (p ? `sensor.${p}_raw_temperature` : null);
+                const rawTempId = this._resolveEntity(ovenConfig.upper_raw_temp, "raw_temperature", "sensor");
                 const rawTempObj = this._getEntity(rawTempId);
-                const lightEntityId = ovenConfig.upper_light_entity || this.config.upper_light_entity || (p ? `select.${p}_light` : null);
+                const lightEntityId = this._resolveEntity(ovenConfig.upper_light_entity || this.config.upper_light_entity, "light", "select");
                 const lightEntity = this._getEntity(lightEntityId);
                 const isLightOn = lightEntity.state === "High" || lightEntity.state === "on" || lightEntity.state === "On";
 
@@ -1692,13 +1717,13 @@ class PassableApplianceCard extends LitElement {
                 const maxTemp = controlObj?.attributes?.max_temp || 550;
 
                 // Diagnostics: Probe & Timers
-                const probePresentId = ovenConfig.upper_probe_present || this._findEntityBySuffix("upper_oven_probe_present")?.entity_id || (p ? `binary_sensor.${p}_upper_oven_probe_present` : null);
-                const probeTempId = ovenConfig.upper_probe_temp || this._findEntityBySuffix("probe_display_temp")?.entity_id || (p ? `sensor.${p}_probe_display_temp` : null);
+                const probePresentId = this._resolveEntity(ovenConfig.upper_probe_present, "upper_oven_probe_present", "binary_sensor");
+                const probeTempId = this._resolveEntity(ovenConfig.upper_probe_temp, "probe_display_temp", "sensor");
                 const isProbePresent = this._isEntityOn(probePresentId);
                 const probeTempObj = probeTempId ? this._getEntity(probeTempId) : null;
 
-                const delayTimeId = ovenConfig.upper_delay_time || this._findEntityBySuffix("upper_oven_delay_time_remaining")?.entity_id || (p ? `sensor.${p}_upper_oven_delay_time_remaining` : null);
-                const elapsedTimeId = ovenConfig.upper_elapsed_time || this._findEntityBySuffix("upper_oven_elapsed_cook_time")?.entity_id || (p ? `sensor.${p}_upper_oven_elapsed_cook_time` : null);
+                const delayTimeId = this._resolveEntity(ovenConfig.upper_delay_time, "upper_oven_delay_time_remaining", "sensor");
+                const elapsedTimeId = this._resolveEntity(ovenConfig.upper_elapsed_time, "upper_oven_elapsed_cook_time", "sensor");
                 const delayTimeObj = delayTimeId ? this._getEntity(delayTimeId) : null;
                 const elapsedTimeObj = elapsedTimeId ? this._getEntity(elapsedTimeId) : null;
 
@@ -1787,17 +1812,17 @@ class PassableApplianceCard extends LitElement {
             <!-- 2. LOWER OVEN TAB -->
             ${activeTab === "lower" ? html`
               ${(() => {
-                const controlEntity = ovenConfig.lower_control || this.config.lower_control || (p ? `water_heater.${p}_lower_oven` : null);
+                const controlEntity = this._resolveEntity(ovenConfig.lower_control || this.config.lower_control, "lower_oven", "water_heater");
                 const controlObj = controlEntity ? this._getEntity(controlEntity) : null;
-                const stateEntityId = ovenConfig.lower_state_entity || (p ? `sensor.${p}_lower_oven_current_state` : null);
+                const stateEntityId = this._resolveEntity(ovenConfig.lower_state_entity, "lower_oven_current_state", "sensor");
                 const ovenStateObj = this._getEntity(stateEntityId);
-                const rawTempId = ovenConfig.lower_raw_temp || (p ? `sensor.${p}_lower_oven_raw_temperature` : null);
+                const rawTempId = this._resolveEntity(ovenConfig.lower_raw_temp, "lower_oven_raw_temperature", "sensor");
                 const rawTempObj = this._getEntity(rawTempId);
-                const lightEntityId = ovenConfig.lower_light_entity || this.config.lower_light_entity || (p ? `select.${p}_lower_oven_light` : null);
+                const lightEntityId = this._resolveEntity(ovenConfig.lower_light_entity || this.config.lower_light_entity, "lower_oven_light", "select");
                 const lightEntity = this._getEntity(lightEntityId);
                 const isLightOn = lightEntity.state === "High" || lightEntity.state === "on" || lightEntity.state === "On";
 
-                const convConvId = ovenConfig.convection_conversion || this._findEntityBySuffix("convection_conversion")?.entity_id || (p ? `switch.${p}_convection_conversion` : null);
+                const convConvId = this._resolveEntity(ovenConfig.convection_conversion, "convection_conversion", "switch");
 
                 const currentMode = controlObj?.attributes?.operation_mode || controlObj?.state || ovenStateObj.state || "off";
                 const operationList = controlObj?.attributes?.operation_list || ["off", "Air Fry", "Conv. Multi-Bake", "Bake", "Convection Roast"];
@@ -1816,13 +1841,13 @@ class PassableApplianceCard extends LitElement {
                 const maxTemp = controlObj?.attributes?.max_temp || 550;
 
                 // Diagnostics: Probe & Timers
-                const probePresentId = ovenConfig.lower_probe_present || this._findEntityBySuffix("lower_oven_probe_present")?.entity_id || (p ? `binary_sensor.${p}_lower_oven_probe_present` : null);
-                const probeTempId = ovenConfig.lower_probe_temp || this._findEntityBySuffix("lower_oven_probe_display_temp")?.entity_id || (p ? `sensor.${p}_lower_oven_probe_display_temp` : null);
+                const probePresentId = this._resolveEntity(ovenConfig.lower_probe_present, "lower_oven_probe_present", "binary_sensor");
+                const probeTempId = this._resolveEntity(ovenConfig.lower_probe_temp, "lower_oven_probe_display_temp", "sensor");
                 const isProbePresent = this._isEntityOn(probePresentId);
                 const probeTempObj = probeTempId ? this._getEntity(probeTempId) : null;
 
-                const delayTimeId = ovenConfig.lower_delay_time || this._findEntityBySuffix("lower_oven_delay_time_remaining")?.entity_id || (p ? `sensor.${p}_lower_oven_delay_time_remaining` : null);
-                const elapsedTimeId = ovenConfig.lower_elapsed_time || this._findEntityBySuffix("lower_oven_elapsed_cook_time")?.entity_id || (p ? `sensor.${p}_lower_oven_elapsed_cook_time` : null);
+                const delayTimeId = this._resolveEntity(ovenConfig.lower_delay_time, "lower_oven_delay_time_remaining", "sensor");
+                const elapsedTimeId = this._resolveEntity(ovenConfig.lower_elapsed_time, "lower_oven_elapsed_cook_time", "sensor");
                 const delayTimeObj = delayTimeId ? this._getEntity(delayTimeId) : null;
                 const elapsedTimeObj = elapsedTimeId ? this._getEntity(elapsedTimeId) : null;
 
@@ -1972,7 +1997,7 @@ class PassableApplianceCard extends LitElement {
                 <div class="divider" style="margin: 8px 0;"></div>
                 <h4 style="margin: 0 0 4px 0; font-size: 0.95rem;">Audio & Display Options</h4>
 
-                ${soundLevelObj ? html`
+                ${soundLevelObj && soundLevelObj.state !== "unavailable" ? html`
                   <div class="control-row select-row">
                     <div class="control-label-group">
                       <ha-icon icon="mdi:volume-high"></ha-icon>
@@ -1989,7 +2014,7 @@ class PassableApplianceCard extends LitElement {
                   </div>
                 ` : ""}
 
-                ${endToneObj ? html`
+                ${endToneObj && endToneObj.state !== "unavailable" ? html`
                   <div class="control-row select-row">
                     <div class="control-label-group">
                       <ha-icon icon="mdi:bell-ring-outline"></ha-icon>
@@ -2006,7 +2031,7 @@ class PassableApplianceCard extends LitElement {
                   </div>
                 ` : ""}
 
-                ${clockFormatObj ? html`
+                ${clockFormatObj && clockFormatObj.state !== "unavailable" ? html`
                   <div class="control-row select-row">
                     <div class="control-label-group">
                       <ha-icon icon="mdi:clock-outline"></ha-icon>
@@ -3793,30 +3818,29 @@ class PassableApplianceCard extends LitElement {
           </div>
 
           <!-- Tabbed Header Bar -->
-          <div class="hvac-modal-tabs" style="display:flex; gap:4px; background:rgba(0,0,0,0.3); padding:4px; border-radius:12px; margin-bottom:12px;">
+          <div class="popup-tabs">
             <button
-              class="hvac-tab-btn ${activeTab === 'setpoints' ? 'active' : ''}"
+              class="popup-tab ${activeTab === 'setpoints' ? 'active-tab' : ''}"
               @click=${() => this._switchHvacTab('setpoints')}
             >
-              <ha-icon icon="mdi:tune" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
-              Setpoints
+              <ha-icon icon="mdi:tune"></ha-icon>
+              <span>Setpoints</span>
             </button>
             <button
-              class="hvac-tab-btn ${activeTab === 'stats' ? 'active' : ''}"
+              class="popup-tab ${activeTab === 'stats' ? 'active-tab' : ''}"
               @click=${() => this._switchHvacTab('stats')}
             >
-              <ha-icon icon="mdi:chart-box" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
-              Stats & Fan
+              <ha-icon icon="mdi:chart-box"></ha-icon>
+              <span>Stats & Fan</span>
             </button>
             <button
-              class="hvac-tab-btn ${activeTab === 'filter' ? 'active' : ''}"
+              class="popup-tab ${activeTab === 'filter' ? 'active-tab' : ''}"
               @click=${() => this._switchHvacTab('filter')}
             >
-              <ha-icon icon="mdi:air-filter" style="--mdc-icon-size:14px; margin-right:4px;"></ha-icon>
-              Air Filter
+              <ha-icon icon="mdi:air-filter"></ha-icon>
+              <span>Filter & Maint</span>
             </button>
           </div>
-
           <div style="display:flex; flex-direction:column; gap:12px;">
             ${activeTab === "setpoints"
               ? html`
@@ -5147,10 +5171,10 @@ class PassableApplianceCard extends LitElement {
         transition: all 0.2s ease;
       }
       .hvac-tab-btn.active {
-        background: var(--primary-color, #86efac);
-        color: #052e16 !important;
-        font-weight: 800;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        background: var(--card-background-color, #1c1c1e);
+        color: var(--primary-color, #3b82f6) !important;
+        font-weight: 700;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
       }
       
       .hvac-top-right-preset {
