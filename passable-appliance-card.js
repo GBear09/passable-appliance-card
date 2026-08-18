@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.1.2
+ * Version: 2.1.3
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "2.1.2";
+const CARD_VERSION = "2.1.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -4721,13 +4721,13 @@ class PassableApplianceCard extends LitElement {
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: var(--dialog-backdrop-background, rgba(0, 0, 0, 0.5));
-        backdrop-filter: var(--dialog-backdrop-filter, blur(4px));
-        -webkit-backdrop-filter: var(--dialog-backdrop-filter, blur(4px));
+        background-color: var(--mdc-dialog-scrim-color, var(--dialog-backdrop-background, rgba(0, 0, 0, 0.32)));
+        backdrop-filter: var(--dialog-backdrop-filter, none);
+        -webkit-backdrop-filter: var(--dialog-backdrop-filter, none);
         display: flex;
         justify-content: center;
         align-items: center;
-        z-index: 1000;
+        z-index: 9999;
         animation: ha-popup-backdrop-fade-in var(--motion-duration-medium, var(--ha-animation-duration, 280ms)) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
         will-change: opacity;
       }
@@ -4981,9 +4981,9 @@ class PassableApplianceCard extends LitElement {
       .popup-overlay {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
+        background-color: var(--mdc-dialog-scrim-color, var(--dialog-backdrop-background, rgba(0, 0, 0, 0.32)));
+        backdrop-filter: var(--dialog-backdrop-filter, none);
+        -webkit-backdrop-filter: var(--dialog-backdrop-filter, none);
         z-index: 9999;
         display: flex;
         align-items: center;
@@ -5038,10 +5038,10 @@ class PassableApplianceCard extends LitElement {
       /* FLUSH GUIDE MODAL */
       .modal-overlay {
         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        background: var(--dialog-backdrop-background, rgba(0, 0, 0, 0.6));
-        z-index: 1000; display: flex; justify-content: center; align-items: flex-end;
-        backdrop-filter: var(--dialog-backdrop-filter, blur(5px));
-        -webkit-backdrop-filter: var(--dialog-backdrop-filter, blur(5px));
+        background-color: var(--mdc-dialog-scrim-color, var(--dialog-backdrop-background, rgba(0, 0, 0, 0.32)));
+        z-index: 9999; display: flex; justify-content: center; align-items: flex-end;
+        backdrop-filter: var(--dialog-backdrop-filter, none);
+        -webkit-backdrop-filter: var(--dialog-backdrop-filter, none);
         animation: ha-popup-backdrop-fade-in var(--motion-duration-medium, var(--ha-animation-duration, 280ms)) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
       }
       .modal-content {
