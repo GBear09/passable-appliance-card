@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 1.9.5
+ * Version: 1.9.6
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "1.9.5";
+const CARD_VERSION = "1.9.6";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -235,13 +235,17 @@ class PassableApplianceCard extends LitElement {
         if (daysMatch && (daysVal === null || isNaN(daysVal))) {
           daysVal = parseInt(daysMatch[1], 10);
         }
-        if (lower.includes("expired") || lower.includes("'02'") || lower.includes("status.expired")) {
+        // Specifically match the status enum value inside status=<ErdFilterStatus.GOOD: '00'>, status=ErdFilterStatus.GOOD, etc.
+        const statusMatch = rawState.match(/status\s*=\s*(?:<ErdFilterStatus\.)?([A-Z0-9_]+)/i);
+        const statusKey = statusMatch ? statusMatch[1].toUpperCase() : "";
+
+        if (statusKey.includes("EXPIRED") || statusKey === "02" || rawState.includes("ErdFilterStatus.EXPIRED")) {
           statusType = "Expired";
           statusDisplay = "Expired";
-        } else if (lower.includes("replace") || lower.includes("warning") || lower.includes("'01'") || lower.includes("status.replace")) {
+        } else if (statusKey.includes("REPLACE") || statusKey.includes("WARN") || statusKey === "01" || rawState.includes("ErdFilterStatus.REPLACE")) {
           statusType = "Replace";
           statusDisplay = "Replace Soon";
-        } else if (lower.includes("good") || lower.includes("'00'") || lower.includes("status.good")) {
+        } else if (statusKey.includes("GOOD") || statusKey === "00" || rawState.includes("ErdFilterStatus.GOOD")) {
           statusType = "Good";
           statusDisplay = "Good";
         }
@@ -3721,7 +3725,16 @@ class PassableApplianceCard extends LitElement {
         border-bottom-left-radius: var(--ha-card-border-radius, 12px); border-bottom-right-radius: var(--ha-card-border-radius, 12px);
         position: relative; display: flex; justify-content: center; align-items: center; cursor: pointer;
       }
-      .door-open { background-color: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1); color: var(--warning-color, #ff9800); }
+      .door-open { background-color: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15); color: var(--warning-color, #ff9800); }
+      .fridge-door.door-open, .fridge-freezer-drawer.door-open {
+        background-color: rgba(var(--rgb-warning-color, 255, 152, 0), 0.18) !important;
+        border-color: var(--warning-color, #ff9800) !important;
+        box-shadow: 0 0 12px rgba(var(--rgb-warning-color, 255, 152, 0), 0.35) !important;
+      }
+      .fridge-door.door-open .fridge-handle, .fridge-freezer-drawer.door-open .freezer-handle {
+        background: var(--warning-color, #ff9800) !important;
+        box-shadow: 0 0 8px rgba(var(--rgb-warning-color, 255, 152, 0), 0.5) !important;
+      }
       .fridge-handle { position: absolute; top: 20px; bottom: 20px; width: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
       .left-handle { right: -30px; z-index: 1; }
       .right-handle { left: -30px; z-index: 1; }
@@ -3868,10 +3881,94 @@ class PassableApplianceCard extends LitElement {
       .ring-label { font-size: 0.75rem; letter-spacing: 0.05em; color: var(--secondary-text-color); margin-top: 4px; }
 
       /* UNIFORM POPUP STYLES & BOTTOM SHEET */
-      .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease; }
-      .popup-overlay.visible { opacity: 1; visibility: visible; }
-      .popup-content { background-color: var(--ha-card-background, var(--card-background-color, white)); padding: 14px 16px 18px; border-radius: 20px; width: 92%; max-width: 440px; max-height: 88vh; overflow-y: auto; color: var(--primary-text-color); display: flex; flex-direction: column; gap: 8px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.3s ease, transform 0.4s ease; }
-      .popup-content.visible { opacity: 1; transform: translateY(0) scale(1); }
+      @keyframes ha-popup-backdrop-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes ha-popup-backdrop-fade-out {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+      @keyframes ha-popup-dialog-in {
+        from {
+          opacity: 0;
+          transform: translateY(20px) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      @keyframes ha-popup-dialog-out {
+        from {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+        to {
+          opacity: 0;
+          transform: translateY(12px) scale(0.97);
+        }
+      }
+      @keyframes ha-popup-sheet-in {
+        from {
+          transform: translateY(100%);
+          opacity: 0.5;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      @keyframes ha-popup-sheet-out {
+        from {
+          transform: translateY(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateY(100%);
+          opacity: 0;
+        }
+      }
+
+      .popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--dialog-backdrop-background, rgba(0, 0, 0, 0.5));
+        backdrop-filter: var(--dialog-backdrop-filter, blur(4px));
+        -webkit-backdrop-filter: var(--dialog-backdrop-filter, blur(4px));
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        animation: ha-popup-backdrop-fade-in var(--motion-duration-medium, var(--ha-animation-duration, 280ms)) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
+        will-change: opacity;
+      }
+      .popup-overlay.closing {
+        animation: ha-popup-backdrop-fade-out var(--motion-duration-short, 180ms) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
+      }
+
+      .popup-content {
+        background-color: var(--ha-card-background, var(--card-background-color, white));
+        padding: 16px 18px 20px;
+        border-radius: var(--ha-dialog-border-radius, var(--ha-card-border-radius, 24px));
+        width: 92%;
+        max-width: 440px;
+        max-height: 88vh;
+        overflow-y: auto;
+        color: var(--primary-text-color);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        box-shadow: var(--ha-dialog-box-shadow, var(--mdc-dialog-box-shadow, 0 12px 32px rgba(0, 0, 0, 0.35)));
+        animation: ha-popup-dialog-in var(--motion-duration-medium, var(--ha-animation-duration, 280ms)) var(--motion-easing-emphasized, var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1))) forwards;
+        will-change: transform, opacity;
+      }
+      .popup-content.closing {
+        animation: ha-popup-dialog-out var(--motion-duration-short, 180ms) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
+      }
       .drag-handle { display: none; }
       
       .popup-header {
