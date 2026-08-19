@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.1.3
+ * Version: 2.1.4
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "2.1.3";
+const CARD_VERSION = "2.1.4";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -4521,8 +4521,8 @@ class PassableApplianceCard extends LitElement {
         box-shadow: 0 0 8px rgba(var(--rgb-warning-color, 255, 152, 0), 0.5) !important;
       }
       .fridge-handle { position: absolute; top: 20px; bottom: 20px; width: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
-      .left-handle { right: -30px; z-index: 1; }
-      .right-handle { left: -30px; z-index: 1; }
+      .left-handle { right: 10px; z-index: 1; }
+      .right-handle { left: 10px; z-index: 1; }
       .freezer-handle { position: absolute; top: 15px; left: 20px; right: 20px; height: 12px; background: var(--disabled-text-color); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.2); }
       .left-door-content { padding: 24px 34px 18px 12px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; box-sizing: border-box; }
       .right-door-content { padding: 16px; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; }
