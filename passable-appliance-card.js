@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.1.4
+ * Version: 2.1.5
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "2.1.4";
+const CARD_VERSION = "2.1.5";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -3002,9 +3002,9 @@ class PassableApplianceCard extends LitElement {
     const maxHours = (filterLife && filterLife.state !== "unavailable" && filterLife.state !== "unknown" && !isNaN(parseFloat(filterLife.state)))
       ? parseFloat(filterLife.state)
       : 300;
-    const filterPct = remHours !== null && maxHours > 0 ? Math.max(0, Math.min(100, Math.round((remHours / maxHours) * 100))) : 100;
-    const filterClass = filterPct < 15 ? "expired" : filterPct < 35 ? "warning" : "ok";
-    const isFilterExpired = remHours !== null && (filterClass === "expired" || remHours <= 0);
+    const isFilterExpired = remHours !== null && remHours <= 0;
+    const isFilterWarning = remHours !== null && remHours > 0 && remHours <= 10;
+    const isFilterAlert = isFilterExpired || isFilterWarning;
 
     // Overshoot display calculation
     const isOvershootActive = overshootActiveObj.state === "on" || (overshootActiveObj.state !== "off" && (hvacAction === "cooling" || hvacAction === "heating"));
@@ -3057,15 +3057,15 @@ class PassableApplianceCard extends LitElement {
                     </span>
                   `
                 : ""}
-              ${isFilterExpired
+              ${isFilterAlert
                 ? html`
                     <span
-                      class="hvac-mini-badge alert-filter"
+                      class="hvac-mini-badge ${isFilterExpired ? 'alert-filter' : 'warning-filter'}"
                       @click=${(e) => { e.stopPropagation(); this._showHvacModal(unitKey, "filter"); }}
                       style="cursor:pointer;"
-                      title="Air filter life expired! Tap to view maintenance steps."
+                      title="${isFilterExpired ? 'Air filter life expired (<= 0h)! Tap to view maintenance steps.' : 'Air filter life low (<= 10h)! Tap to view maintenance steps.'}"
                     >
-                      ⚠️ Replace Filter
+                      ⚠️ ${isFilterExpired ? 'Replace Filter' : 'Filter Warning'}
                     </span>
                   `
                 : ""}
@@ -3084,13 +3084,13 @@ class PassableApplianceCard extends LitElement {
         <!-- Right Section: Single Consolidated Controls & Analytics Settings Button -->
         <div class="hvac-compact-actions">
           <button
-            class="hvac-icon-btn ${isFilterExpired ? "expired" : ""}"
+            class="hvac-icon-btn ${isFilterExpired ? 'expired' : isFilterWarning ? 'warning' : ''}"
             style="position:relative;"
             title="Open HVAC Controls & Analytics"
             @click=${() => this._showHvacModal(unitKey, "setpoints")}
           >
             <ha-icon icon="mdi:cog-outline"></ha-icon>
-            ${isFilterExpired ? html`<span class="filter-alert-dot"></span>` : ""}
+            ${isFilterAlert ? html`<span class="filter-alert-dot ${isFilterExpired ? 'expired' : 'warning'}"></span>` : ""}
           </button>
         </div>
       </div>
@@ -4636,14 +4636,14 @@ class PassableApplianceCard extends LitElement {
       /* STEPPER PILL CONTROLLER */
       .step-controller-pill {
         display: flex; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.4);
-        border-radius: 20px; padding: 6px 14px; gap: 16px; border: none; min-width: 140px;
+        border-radius: 20px; padding: 4px 10px; gap: 8px; border: none; flex-shrink: 0; box-sizing: border-box;
       }
       .pill-btn {
-        background: none; border: none; color: var(--primary-text-color); cursor: pointer; padding: 0;
-        display: flex; align-items: center; justify-content: center; font-size: 1.2rem; opacity: 0.8;
+        background: none; border: none; color: var(--primary-text-color); cursor: pointer; padding: 2px 6px;
+        display: flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 700; opacity: 0.85; white-space: nowrap; flex-shrink: 0;
       }
       .pill-btn:hover { opacity: 1; }
-      .pill-value { font-weight: 600; font-size: 0.95rem; color: var(--primary-text-color); white-space: nowrap; }
+      .pill-value { font-weight: 600; font-size: 0.9rem; color: var(--primary-text-color); white-space: nowrap; text-align: center; }
 
       /* TIMELINE TRACK & INTERACTIVE POINTER HOVER */
       .timeline-track {
@@ -5132,6 +5132,11 @@ class PassableApplianceCard extends LitElement {
         70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
         100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
       }
+      @keyframes warning-pulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+        70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+      }
       .filter-alert-dot {
         position: absolute;
         top: -3px;
@@ -5143,12 +5148,29 @@ class PassableApplianceCard extends LitElement {
         border: 1px solid rgba(0,0,0,0.6);
         animation: alert-pulse 1.8s infinite;
       }
+      .filter-alert-dot.warning {
+        background-color: #f59e0b;
+        animation: warning-pulse 1.8s infinite;
+      }
       .hvac-mini-badge.alert-filter {
         background: rgba(239, 68, 68, 0.25);
         color: #ef4444;
         border: 1px solid rgba(239, 68, 68, 0.6);
         font-weight: 700;
         animation: alert-pulse 2s infinite;
+      }
+      .hvac-mini-badge.warning-filter {
+        background: rgba(245, 158, 11, 0.25);
+        color: #f59e0b;
+        border: 1px solid rgba(245, 158, 11, 0.6);
+        font-weight: 700;
+        animation: warning-pulse 2s infinite;
+      }
+      .hvac-icon-btn.expired {
+        border-color: rgba(239, 68, 68, 0.6);
+      }
+      .hvac-icon-btn.warning {
+        border-color: rgba(245, 158, 11, 0.6);
       }
 
       .hvac-mode-btn { background: rgba(255,255,255,0.1); border: none; color: var(--primary-text-color); padding: 5px 10px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
