@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.1.5
+ * Version: 2.1.6
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  6. HVAC Systems (Extract Numeric Temperature for Weather Domain Entities + Sort HA Recorder History Chronologically to Eliminate 24h Flatlining)
  */
 
-const CARD_VERSION = "2.1.5";
+const CARD_VERSION = "2.1.6";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -4719,6 +4719,8 @@ class PassableApplianceCard extends LitElement {
         position: fixed;
         top: 0;
         left: 0;
+        right: 0;
+        bottom: 0;
         width: 100%;
         height: 100%;
         background-color: var(--mdc-dialog-scrim-color, var(--dialog-backdrop-background, rgba(0, 0, 0, 0.32)));
@@ -4727,6 +4729,9 @@ class PassableApplianceCard extends LitElement {
         display: flex;
         justify-content: center;
         align-items: center;
+        padding: 16px;
+        box-sizing: border-box;
+        overflow-x: hidden;
         z-index: 9999;
         animation: ha-popup-backdrop-fade-in var(--motion-duration-medium, var(--ha-animation-duration, 280ms)) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
         will-change: opacity;
@@ -4736,18 +4741,22 @@ class PassableApplianceCard extends LitElement {
       }
 
       .popup-content {
-        background-color: var(--ha-card-background, var(--card-background-color, white));
-        padding: 16px 18px 20px;
+        background-color: var(--ha-card-background, var(--card-background-color, #1c1c1e));
+        padding: 16px 20px 20px;
         border-radius: var(--ha-dialog-border-radius, var(--ha-card-border-radius, 24px));
-        width: 92%;
+        width: 100%;
         max-width: 440px;
-        max-height: 88vh;
+        max-height: 90vh;
         overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
         color: var(--primary-text-color);
         display: flex;
         flex-direction: column;
         gap: 8px;
-        box-shadow: var(--ha-dialog-box-shadow, var(--mdc-dialog-box-shadow, 0 12px 32px rgba(0, 0, 0, 0.35)));
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+        box-sizing: border-box;
         animation: ha-popup-dialog-in var(--motion-duration-medium, var(--ha-animation-duration, 280ms)) var(--motion-easing-emphasized, var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1))) forwards;
         will-change: transform, opacity;
       }
@@ -4977,34 +4986,6 @@ class PassableApplianceCard extends LitElement {
         box-sizing: border-box;
         width: 100%;
         max-width: 100%;
-      }
-      .popup-overlay {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background-color: var(--mdc-dialog-scrim-color, var(--dialog-backdrop-background, rgba(0, 0, 0, 0.32)));
-        backdrop-filter: var(--dialog-backdrop-filter, none);
-        -webkit-backdrop-filter: var(--dialog-backdrop-filter, none);
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-        box-sizing: border-box;
-        overflow-x: hidden;
-      }
-      .popup-content {
-        background: var(--ha-card-background, var(--card-background-color, #1c1c1e));
-        border-radius: 24px;
-        padding: 16px 20px 20px;
-        width: 100%;
-        max-width: 440px;
-        max-height: 90vh;
-        overflow-y: auto;
-        overflow-x: hidden;
-        position: relative;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
-        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
-        box-sizing: border-box;
       }
       .popup-controls {
         display: flex;
@@ -5256,20 +5237,28 @@ class PassableApplianceCard extends LitElement {
       }
 
       @media (max-width: 768px) {
-        .popup-overlay {
+        .popup-overlay,
+        .modal-overlay {
           align-items: flex-end;
+          justify-content: center;
+          padding: 0;
           overscroll-behavior: contain;
           touch-action: none;
         }
-        .popup-content {
+        .popup-content,
+        .modal-content {
           width: 100%;
-          max-width: none;
+          max-width: 100%;
           border-radius: var(--ha-dialog-border-radius, 24px) var(--ha-dialog-border-radius, 24px) 0 0;
+          border-bottom: none;
+          border-left: none;
+          border-right: none;
           padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
           overscroll-behavior: contain;
           animation: ha-popup-sheet-in var(--motion-duration-medium, var(--ha-animation-duration, 300ms)) var(--motion-easing-emphasized, var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1))) forwards;
         }
-        .popup-content.closing {
+        .popup-content.closing,
+        .modal-content.closing {
           animation: ha-popup-sheet-out var(--motion-duration-short, 180ms) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
         }
         .drag-handle { display: block; width: 36px; height: 5px; background-color: var(--secondary-text-color, #888); border-radius: 3px; margin: -4px auto 12px auto; flex-shrink: 0; position: sticky; top: -12px; z-index: 10; }
