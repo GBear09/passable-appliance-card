@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.2.0
+ * Version: 2.2.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  (Note: HVAC systems have been extracted to dedicated standalone card passable-hvac-card)
  */
 
-const CARD_VERSION = "2.2.0";
+const CARD_VERSION = "2.2.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -3145,7 +3145,7 @@ class PassableApplianceCard extends LitElement {
       }
 
       .popup-content {
-        background-color: var(--ha-card-background, var(--card-background-color, #1c1c1e));
+        background-color: var(--ha-card-background, var(--card-background-color, #fff));
         padding: 16px 20px 20px;
         border-radius: var(--ha-dialog-border-radius, var(--ha-card-border-radius, 24px));
         width: 100%;
@@ -3430,7 +3430,7 @@ class PassableApplianceCard extends LitElement {
         animation: ha-popup-backdrop-fade-in var(--motion-duration-medium, var(--ha-animation-duration, 280ms)) var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1)) forwards;
       }
       .modal-content {
-        background: var(--ha-card-background, var(--card-background-color, #1c1c1e));
+        background: var(--ha-card-background, var(--card-background-color, #fff));
         border-radius: var(--ha-dialog-border-radius, 28px) var(--ha-dialog-border-radius, 28px) 0 0;
         width: 100%; max-width: 600px; display: flex; flex-direction: column; overflow: hidden; max-height: 90vh;
         box-shadow: var(--ha-dialog-box-shadow, 0 -8px 24px rgba(0, 0, 0, 0.35));
@@ -3562,7 +3562,7 @@ class PassableApplianceCard extends LitElement {
         background: rgba(128, 128, 128, 0.15);
       }
       .popup-tab.active-tab {
-        background: var(--card-background-color, #1c1c1e);
+        background: var(--card-background-color, #fff);
         color: var(--primary-color, #3b82f6);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
       }
@@ -3604,7 +3604,7 @@ class PassableApplianceCard extends LitElement {
         padding-right: 4px;
       }
       .temp-mode-select option {
-        background: var(--ha-card-background, #1c1c1e);
+        background: var(--ha-card-background, #fff);
         color: var(--primary-text-color);
       }
       .native-temp-card.is-mode-off {
@@ -3629,7 +3629,7 @@ class PassableApplianceCard extends LitElement {
         box-sizing: border-box;
       }
       .popup-select-input option {
-        background: var(--ha-card-background, #1c1c1e);
+        background: var(--ha-card-background, #fff);
         color: var(--primary-text-color);
       }
 
@@ -4209,5 +4209,6 @@ window.customCards.push({
   type: "passable-appliance-card",
   name: "Passable Appliance Card",
   preview: true,
+  documentationURL: "https://github.com/GBear09/passable-appliance-card",
   description: "Dynamic universal appliance card supporting refrigerators, induction ranges, laundry, water heaters, and smart hose timers.",
 });
