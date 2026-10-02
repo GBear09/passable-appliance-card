@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.2.1
+ * Version: 2.2.2
  * GitHub: https://github.com/GBear09/passable-appliance-card
  * 
  * Dynamic Universal Appliance Card for Home Assistant.
@@ -14,7 +14,7 @@
  *  (Note: HVAC systems have been extracted to dedicated standalone card passable-hvac-card)
  */
 
-const CARD_VERSION = "2.2.1";
+const CARD_VERSION = "2.2.2";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -3039,15 +3039,41 @@ class PassableApplianceCard extends LitElement {
 
       /* STEPPER PILL CONTROLLER */
       .step-controller-pill {
-        display: flex; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.4);
-        border-radius: 20px; padding: 4px 10px; gap: 8px; border: none; flex-shrink: 0; box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--secondary-background-color, rgba(128, 128, 128, 0.15));
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
+        border-radius: 20px;
+        padding: 4px 10px;
+        gap: 8px;
+        flex-shrink: 0;
+        box-sizing: border-box;
       }
       .pill-btn {
-        background: none; border: none; color: var(--primary-text-color); cursor: pointer; padding: 2px 6px;
-        display: flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 700; opacity: 0.85; white-space: nowrap; flex-shrink: 0;
+        background: none;
+        border: none;
+        color: var(--primary-text-color);
+        cursor: pointer;
+        padding: 2px 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.82rem;
+        font-weight: 700;
+        opacity: 0.85;
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: opacity 0.15s ease;
       }
       .pill-btn:hover { opacity: 1; }
-      .pill-value { font-weight: 600; font-size: 0.9rem; color: var(--primary-text-color); white-space: nowrap; text-align: center; }
+      .pill-value {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--primary-text-color);
+        white-space: nowrap;
+        text-align: center;
+      }
 
       /* TIMELINE TRACK & INTERACTIVE POINTER HOVER */
       .timeline-track {
@@ -3437,7 +3463,7 @@ class PassableApplianceCard extends LitElement {
         color: var(--primary-text-color);
         animation: ha-popup-sheet-in var(--motion-duration-medium, var(--ha-animation-duration, 300ms)) var(--motion-easing-emphasized, var(--motion-easing-standard, cubic-bezier(0.2, 0, 0, 1))) forwards;
       }
-      .modal-header { padding: 16px 20px; background: #86efac; color: #052e16; display: flex; justify-content: space-between; align-items: center; }
+      .modal-header { padding: 16px 20px; background: var(--primary-color, #3b82f6); color: var(--text-primary-color, var(--primary-text-color, #fff)); display: flex; justify-content: space-between; align-items: center; }
       .modal-header h2 { margin: 0; font-size: 1.2em; font-weight: 700; }
       .close-btn { background: none; border: none; color: inherit; cursor: pointer; padding: 4px; border-radius: 50%; }
       .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
@@ -3447,7 +3473,20 @@ class PassableApplianceCard extends LitElement {
       .materials-section li { margin-bottom: 6px; font-size: 0.95rem; }
       .step-timeline { display: flex; flex-direction: column; gap: 16px; }
       .step { display: flex; gap: 14px; }
-      .step-num { background: #86efac; color: #052e16; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; flex-shrink: 0; margin-top: 2px; }
+      .step-num {
+        background: var(--primary-color, #3b82f6);
+        color: var(--text-primary-color, var(--primary-text-color, #fff));
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
       .step-content h4 { margin: 0 0 4px 0; font-size: 1.05rem; }
       .step-content p { margin: 0 0 4px 0; font-size: 0.9rem; color: var(--secondary-text-color); line-height: 1.4; }
 
@@ -3562,9 +3601,13 @@ class PassableApplianceCard extends LitElement {
         background: rgba(128, 128, 128, 0.15);
       }
       .popup-tab.active-tab {
-        background: var(--card-background-color, #fff);
-        color: var(--primary-color, #3b82f6);
+        background: var(--primary-color, #3b82f6);
+        color: var(--text-primary-color, var(--primary-text-color, #fff));
+        font-weight: 700;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      }
+      .popup-tab.active-tab ha-icon {
+        color: var(--text-primary-color, var(--primary-text-color, #fff));
       }
 
       /* TEMPERATURE CONTROLLER MODE DROPDOWN */

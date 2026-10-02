@@ -5,6 +5,12 @@ All notable changes to **Passable Appliance Card** will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-10-02
+
+### Changed
+- **Popup & Tab Harmonization**: Aligned active tabs (`.popup-tab.active-tab`) to use filled `var(--primary-color)` with dynamic high-contrast text (`var(--text-primary-color, var(--primary-text-color))`), matching the Passable vehicle card and HVAC card.
+- **Theme-Adaptive Steppers & Modals**: Updated `.step-controller-pill` to theme-adaptive variables (`var(--secondary-background-color)`, `var(--divider-color)`), and updated `.modal-header` and `.step-num` to `var(--primary-color)` and adaptive text.
+
 ## [2.2.1] - 2026-10-02
 
 ### Changed
