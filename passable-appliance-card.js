@@ -14,7 +14,7 @@
  *  (Note: HVAC systems have been extracted to dedicated standalone card passable-hvac-card)
  */
 
-const CARD_VERSION = "2.2.2";
+const CARD_VERSION = "2.2.3";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("hui-entities-card")
@@ -424,6 +424,7 @@ class PassableApplianceCard extends LitElement {
     return { min: Math.round(minVal), max: Math.round(maxVal) };
   }
 
+  disconnectedCallback() { super.disconnectedCallback(); if (this._holdTimeout) clearTimeout(this._holdTimeout); if (this._holdInterval) clearInterval(this._holdInterval); }
   _startHold(entityId, delta, min, max, step, e) {
     this._wasHolding = false;
     this._stopHold(entityId);
@@ -1013,7 +1014,7 @@ class PassableApplianceCard extends LitElement {
     const fridgeSetTemp = fridgeControl.attributes.temperature ?? "37";
     const freezerSetTemp = freezerControl.attributes.temperature ?? "0";
 
-    const isOpen = doorInfo.isOpen;
+    const isOpen = Boolean(doorInfo.isAnyOpen || doorInfo.isOpen);
     const isHeating = hotWaterStatus.state === "Heating";
     const isWorking = isOpen || isHeating;
 
@@ -1025,7 +1026,7 @@ class PassableApplianceCard extends LitElement {
       chipLabel = "POWER OFF";
       chipClass = "power-off";
     } else if (isOpen) {
-      chipLabel = doorInfo.doorText.toUpperCase();
+      chipLabel = (doorInfo.displayLabel || doorInfo.doorText || "DOOR OPEN").toUpperCase();
       chipClass = "active-alert";
     } else if (filterInfo.chipBadge) {
       chipLabel = filterInfo.chipBadge.label;
@@ -4244,8 +4245,8 @@ class PassableApplianceCardEditor extends LitElement {
   }
 }
 
-customElements.define("passable-appliance-card", PassableApplianceCard);
-customElements.define("passable-appliance-card-editor", PassableApplianceCardEditor);
+if (!customElements.get("passable-appliance-card")) customElements.define("passable-appliance-card", PassableApplianceCard);
+if (!customElements.get("passable-appliance-card-editor")) customElements.define("passable-appliance-card-editor", PassableApplianceCardEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
