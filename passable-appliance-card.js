@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.3.0
+ * Version: 2.3.1
  * GitHub: https://github.com/GBear09/passable-appliance-card
  *
  * Passable design-system universal appliance card for Home Assistant supporting:
@@ -15,7 +15,7 @@
  * 3-tab Command Center popup, with optional SPAN Panel live electrical telemetry.
  */
 
-const CARD_VERSION = "2.3.0";
+const CARD_VERSION = "2.3.1";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("ha-panel-lovelace") ||
@@ -48,6 +48,12 @@ const APPLIANCE_META = {
   water_heater: { title: "Water Heater", subtitle: "Navien Tankless NPE-240A2", icon: "mdi:water-boiler" },
   smart_hose_timer: { title: "Smart Hose Timer", subtitle: "Orbit B-hyve HT25", icon: "mdi:sprinkler-variant" },
 };
+
+function parseFiniteNum(val, fallback = null) {
+  if (val === null || val === undefined || val === "") return fallback;
+  const n = typeof val === "number" ? val : parseFloat(val);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 function formatTitleCase(val) {
   if (!val) return "";
@@ -140,6 +146,7 @@ class PassableApplianceCard extends LitElement {
     this._showHoseSettings = false;
     this._showFlushModal = false;
     this._manualRuntime = 15;
+    this._runtimeSyncedFromEntity = false;
     this._selectedSegmentText = "Tap timeline segment for details";
     this._historyCache = {};
     this._isDragging = false;
@@ -346,6 +353,8 @@ class PassableApplianceCard extends LitElement {
       resolved.dispenser_control = rawCfg.dispenser_control || this._findEntity("dispenser", "water_heater", hints);
       resolved.fridge_temp_current = rawCfg.fridge_temp_current || this._findEntity("current_temperature_fridge", "sensor", hints);
       resolved.freezer_temp_current = rawCfg.freezer_temp_current || this._findEntity("current_temperature_freezer", "sensor", hints);
+      resolved.fridge_temp_setting = rawCfg.fridge_temp_setting || this._findEntity("temperature_setting_fridge", "sensor", hints);
+      resolved.freezer_temp_setting = rawCfg.freezer_temp_setting || this._findEntity("temperature_setting_freezer", "sensor", hints);
       resolved.fridge_min_entity = rawCfg.fridge_min_entity || this._findEntity("setpoint_limits_fridge_min", "sensor", hints);
       resolved.fridge_max_entity = rawCfg.fridge_max_entity || this._findEntity("setpoint_limits_fridge_max", "sensor", hints);
       resolved.freezer_min_entity = rawCfg.freezer_min_entity || this._findEntity("setpoint_limits_freezer_min", "sensor", hints);
@@ -379,6 +388,8 @@ class PassableApplianceCard extends LitElement {
         lower_control: ov.lower_control || rawCfg.lower_control || this._findEntity("lower_oven", "water_heater", hints),
         upper_raw_temp: ov.upper_raw_temp || rawCfg.upper_raw_temp || this._findByKeywords("sensor", ["sqdr174020p_raw_temperature"]) || this._findEntity("raw_temperature", "sensor", hints),
         lower_raw_temp: ov.lower_raw_temp || rawCfg.lower_raw_temp || this._findEntity("lower_oven_raw_temperature", "sensor", hints),
+        upper_display_temp: ov.upper_display_temp || this._findByKeywords("sensor", ["sqdr174020p_display_temperature"]),
+        lower_display_temp: ov.lower_display_temp || this._findEntity("lower_oven_display_temperature", "sensor", hints),
         upper_state_entity: ov.upper_state_entity || rawCfg.upper_state_entity || this._findByKeywords("sensor", ["sqdr174020p_current_state"]) || this._findEntity("current_state", "sensor", hints),
         lower_state_entity: ov.lower_state_entity || rawCfg.lower_state_entity || this._findEntity("lower_oven_current_state", "sensor", hints),
         upper_light_entity: ov.upper_light_entity || rawCfg.upper_light_entity || this._findByKeywords(["select", "switch"], ["sqdr174020p_light"]) || this._findEntity("light", "select", hints),
@@ -404,22 +415,32 @@ class PassableApplianceCard extends LitElement {
         clock_format: ov.clock_format || this._findEntity("clock_format", "select", hints),
       };
       const ct = rawCfg.cooktop || {};
+      const defaultBurners = [
+        { shortLabel: "LF", label: 'Left Front (8" Sync)', status_entity: this._findEntity("cooktop_status_left_front_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_left_front_power_pct", "sensor", hints) },
+        { shortLabel: "LR", label: 'Left Rear (8" Sync)', status_entity: this._findEntity("cooktop_status_left_rear_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_left_rear_power_pct", "sensor", hints) },
+        { shortLabel: "WARM", label: 'Center Rear (6" Warm)', status_entity: this._findEntity("cooktop_status_center_rear_on", "binary_sensor", hints), power_entity: null },
+        { shortLabel: "RR", label: 'Right Rear (7")', status_entity: this._findEntity("cooktop_status_right_rear_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_right_rear_power_pct", "sensor", hints) },
+        { shortLabel: "RF", label: 'Right Front (11" Power)', status_entity: this._findEntity("cooktop_status_right_front_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_right_front_power_pct", "sensor", hints) },
+      ];
+      const defaultSyncs = {
+        left_front: this._findEntity("cooktop_status_left_front_synchronized", "binary_sensor", hints),
+        left_rear: this._findEntity("cooktop_status_left_rear_synchronized", "binary_sensor", hints),
+        center_rear: this._findEntity("cooktop_status_center_rear_synchronized", "binary_sensor", hints),
+        right_front: this._findEntity("cooktop_status_right_front_synchronized", "binary_sensor", hints),
+        right_rear: this._findEntity("cooktop_status_right_rear_synchronized", "binary_sensor", hints),
+      };
       resolved.cooktop = {
-        master_status: this._findByKeywords("binary_sensor", ["sqdr174020p_cooktop_status"]),
-        burners: ct.burners || [
-          { label: "LF", status_entity: this._findEntity("cooktop_status_left_front_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_left_front_power_pct", "sensor", hints) },
-          { label: "LR", status_entity: this._findEntity("cooktop_status_left_rear_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_left_rear_power_pct", "sensor", hints) },
-          { label: "CR", status_entity: this._findEntity("cooktop_status_center_rear_on", "binary_sensor", hints), power_entity: null },
-          { label: "RR", status_entity: this._findEntity("cooktop_status_right_rear_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_right_rear_power_pct", "sensor", hints) },
-          { label: "RF", status_entity: this._findEntity("cooktop_status_right_front_on", "binary_sensor", hints), power_entity: this._findEntity("cooktop_status_right_front_power_pct", "sensor", hints) },
-        ],
-        sync_entities: ct.sync_entities || {
-          left_front: this._findEntity("cooktop_status_left_front_synchronized", "binary_sensor", hints),
-          left_rear: this._findEntity("cooktop_status_left_rear_synchronized", "binary_sensor", hints),
-          center_rear: this._findEntity("cooktop_status_center_rear_synchronized", "binary_sensor", hints),
-          right_front: this._findEntity("cooktop_status_right_front_synchronized", "binary_sensor", hints),
-          right_rear: this._findEntity("cooktop_status_right_rear_synchronized", "binary_sensor", hints),
-        },
+        master_status: ct.master_status || this._findByKeywords("binary_sensor", ["sqdr174020p_cooktop_status"]),
+        burners: defaultBurners.map((defB, i) => {
+          const cfgB = Array.isArray(ct.burners) && ct.burners[i] ? ct.burners[i] : {};
+          return {
+            shortLabel: cfgB.shortLabel || defB.shortLabel,
+            label: cfgB.label || defB.label,
+            status_entity: cfgB.status_entity || defB.status_entity,
+            power_entity: cfgB.power_entity !== undefined ? cfgB.power_entity : defB.power_entity,
+          };
+        }),
+        sync_entities: { ...defaultSyncs, ...(ct.sync_entities || {}) },
       };
     } else if (type === "laundry") {
       const w = rawCfg.washer || {};
@@ -447,6 +468,7 @@ class PassableApplianceCard extends LitElement {
     } else if (type === "water_heater") {
       resolved.entity = rawCfg.entity || "water_heater.water_heater";
       resolved.power_entity = rawCfg.power_entity || this._findByKeywords("switch", ["water_heater_power"]);
+      resolved.native_power_sensor = rawCfg.native_power_sensor || this._findByKeywords("sensor", ["water_heater_power"]);
       resolved.inlet_temp_sensor = rawCfg.inlet_temp_sensor || this._findByKeywords("sensor", ["inlet_temp"]);
       resolved.outlet_temp_sensor = rawCfg.outlet_temp_sensor || this._findByKeywords("sensor", ["hot_water_temp"]);
       resolved.flow_rate_sensor = rawCfg.flow_rate_sensor || this._findByKeywords("sensor", ["hot_water_flow"]);
@@ -462,6 +484,13 @@ class PassableApplianceCard extends LitElement {
       resolved.sub_error_code = this._findByKeywords("sensor", ["water_heater", "sub_error_code"]);
     } else if (type === "smart_hose_timer") {
       resolved.valve_entity = rawCfg.valve_entity || this._findByKeywords("valve", ["pool_zone"]) || Object.keys(this.hass?.states || {}).find((id) => id.startsWith("valve."));
+      if (!this._runtimeSyncedFromEntity && resolved.valve_entity) {
+        const presetSec = parseFiniteNum(this.hass?.states?.[resolved.valve_entity]?.attributes?.manual_preset_runtime);
+        if (presetSec !== null && presetSec > 0) {
+          this._manualRuntime = Math.max(1, Math.min(120, Math.round(presetSec / 60)));
+          this._runtimeSyncedFromEntity = true;
+        }
+      }
       resolved.device_mode_select = rawCfg.device_mode_select || this._findByKeywords("select", ["pool_device_mode"]);
       resolved.fault_sensor = rawCfg.fault_sensor || this._findByKeywords("binary_sensor", ["pool_fault"]);
       resolved.state_sensor = rawCfg.state_sensor || this._findByKeywords("sensor", ["pool_state"]);
@@ -595,12 +624,12 @@ class PassableApplianceCard extends LitElement {
     });
   }
 
-  _setTemperature(entityId, temp) {
+  _setTemperature(entityId, temp, fallbackMin = -10, fallbackMax = 550) {
     if (!entityId || !this.hass) return;
     this._fireHaptic("medium");
     const obj = this._getEntity(entityId);
-    const min = Number(obj.attributes?.min_temp ?? 34);
-    const max = Number(obj.attributes?.max_temp ?? 550);
+    const min = parseFiniteNum(obj.attributes?.min_temp, fallbackMin);
+    const max = parseFiniteNum(obj.attributes?.max_temp, fallbackMax);
     const clamped = Math.max(min, Math.min(max, Math.round(Number(temp))));
     const domain = entityId.split(".")[0] || "water_heater";
     this.hass.callService(domain, "set_temperature", {
@@ -610,7 +639,7 @@ class PassableApplianceCard extends LitElement {
   }
 
   _changeWaterHeaterTemp(entityId, targetTemp) {
-    this._setTemperature(entityId, targetTemp);
+    this._setTemperature(entityId, targetTemp, 97, 185);
   }
 
   _setOperationMode(entityId, mode) {
@@ -627,10 +656,11 @@ class PassableApplianceCard extends LitElement {
     }
   }
 
-  _startHold(entityId, delta, min, max) {
+  _startHold(entityId, delta, min, max, opts = {}) {
     this._wasHolding = false;
     this._stopHold(entityId);
-    const cur = this._getTargetTemp(entityId, min);
+    const base = opts.stagingDefault ?? min;
+    const cur = this._getTargetTemp(entityId, base, opts);
     const next = Math.max(min, Math.min(max, cur + delta));
     this._localTemps = { ...this._localTemps, [entityId]: next };
     this._fireHaptic("light");
@@ -667,11 +697,12 @@ class PassableApplianceCard extends LitElement {
     }
   }
 
-  _adjustTemp(entityId, delta, min, max) {
-    const cur = this._getTargetTemp(entityId, min);
+  _adjustTemp(entityId, delta, min, max, opts = {}) {
+    const base = opts.stagingDefault ?? min;
+    const cur = this._getTargetTemp(entityId, base, opts);
     const upd = Math.max(min, Math.min(max, cur + delta));
     this._localTemps = { ...this._localTemps, [entityId]: upd };
-    this._setTemperature(entityId, upd);
+    this._setTemperature(entityId, upd, min, max);
     setTimeout(() => {
       const next = { ...this._localTemps };
       delete next[entityId];
@@ -679,15 +710,43 @@ class PassableApplianceCard extends LitElement {
     }, 1400);
   }
 
-  _getTargetTemp(entityId, fallback = 150) {
+  _getTargetTemp(entityId, fallback = 150, { allowZeroOrNegative = false } = {}) {
     if (this._localTemps[entityId] !== undefined) return this._localTemps[entityId];
     const obj = this._getEntity(entityId);
-    if (obj.attributes?.temperature !== undefined && obj.attributes.temperature !== null) {
-      const v = parseFloat(obj.attributes.temperature);
-      if (!isNaN(v) && v > 0) return v;
+    const attrTemp = parseFiniteNum(obj.attributes?.temperature);
+    if (attrTemp !== null && (allowZeroOrNegative || attrTemp > 0)) {
+      return attrTemp;
     }
-    const n = parseFloat(obj.state);
-    return !isNaN(n) ? n : fallback;
+    const stateNum = parseFiniteNum(obj.state);
+    if (stateNum !== null && (allowZeroOrNegative || stateNum > 0)) {
+      return stateNum;
+    }
+    return fallback;
+  }
+
+  _getFridgeSetpoints(u) {
+    const fCtrl = this._getEntity(u.fridge_control);
+    const zCtrl = this._getEntity(u.freezer_control);
+    const fSet =
+      this._localTemps[u.fridge_control] ??
+      parseFiniteNum(fCtrl.attributes?.temperature) ??
+      parseFiniteNum(this._getEntity(u.fridge_temp_setting).state) ??
+      37;
+    const zSet =
+      this._localTemps[u.freezer_control] ??
+      parseFiniteNum(zCtrl.attributes?.temperature) ??
+      parseFiniteNum(this._getEntity(u.freezer_temp_setting).state) ??
+      0;
+    return { fSet, zSet };
+  }
+
+  _getOvenTargetTemp(ctrlId, dispId, isOn) {
+    if (this._localTemps[ctrlId] !== undefined) return this._localTemps[ctrlId];
+    const ctrlAttr = parseFiniteNum(this._getEntity(ctrlId).attributes?.temperature);
+    if (ctrlAttr !== null && ctrlAttr >= 100) return ctrlAttr;
+    const dispVal = parseFiniteNum(this._getEntity(dispId).state);
+    if (dispVal !== null && dispVal >= 100) return dispVal;
+    return isOn ? 350 : null;
   }
 
   async _fetchRecircHistory(entityId) {
@@ -935,12 +994,13 @@ class PassableApplianceCard extends LitElement {
   // =========================================================================
 
   _readSpanTelemetry(u) {
-    const pObj = u.span?.power ? this._getEntity(u.span.power) : null;
+    const pEntId = u.span?.power || u.native_power_sensor;
+    const pObj = pEntId ? this._getEntity(pEntId) : null;
     const cObj = u.span?.current ? this._getEntity(u.span.current) : null;
     const eObj = u.span?.energy ? this._getEntity(u.span.energy) : null;
-    const watts = pObj && !isNaN(parseFloat(pObj.state)) ? parseFloat(pObj.state) : null;
-    const amps = cObj && !isNaN(parseFloat(cObj.state)) ? parseFloat(cObj.state) : null;
-    const energyWh = eObj && !isNaN(parseFloat(eObj.state)) ? parseFloat(eObj.state) : null;
+    const watts = pObj ? parseFiniteNum(pObj.state) : null;
+    const amps = cObj ? parseFiniteNum(cObj.state) : null;
+    const energyWh = eObj ? parseFiniteNum(eObj.state) : null;
     return {
       watts,
       amps,
@@ -1009,10 +1069,9 @@ class PassableApplianceCard extends LitElement {
     const type = u.appliance_type;
 
     if (type === "refrigerator") {
-      const fTemp = parseFloat(this._getEntity(u.fridge_temp_current).state);
-      const zTemp = parseFloat(this._getEntity(u.freezer_temp_current).state);
-      const fSet = this._getEntity(u.fridge_control).attributes?.temperature ?? 37;
-      const zSet = this._getEntity(u.freezer_control).attributes?.temperature ?? 0;
+      const fTemp = parseFiniteNum(this._getEntity(u.fridge_temp_current).state);
+      const zTemp = parseFiniteNum(this._getEntity(u.freezer_temp_current).state);
+      const { fSet, zSet } = this._getFridgeSetpoints(u);
       const doorInfo = this._getDoorStatusInfo(u);
       const filterInfo = this._getWaterFilterInfo(u);
       const iceBucket = this._getEntity(u.ice_bucket_status).state;
@@ -1026,8 +1085,8 @@ class PassableApplianceCard extends LitElement {
         span,
         tone,
         isActive: isHeating || doorInfo.isAnyOpen,
-        primaryVal: !isNaN(fTemp) ? `${Math.round(fTemp)}° / ${!isNaN(zTemp) ? Math.round(zTemp) : "--"}°` : "35° / 0°",
-        primarySub: `Set ${fSet}° / ${zSet}°`,
+        primaryVal: fTemp !== null ? `${Math.round(fTemp)}° / ${zTemp !== null ? Math.round(zTemp) : "--"}°` : "--° / --°",
+        primarySub: `Set ${Math.round(fSet)}° / ${Math.round(zSet)}°`,
         statusSub: doorInfo.isAnyOpen
           ? doorInfo.label
           : isHeating
@@ -1039,7 +1098,7 @@ class PassableApplianceCard extends LitElement {
           ...(hwFault ? [{ label: "Hot Water Fault", cls: "danger" }] : []),
         ],
         ringA: filterInfo.pct !== null ? { pct: filterInfo.pct, val: `${Math.round(filterInfo.pct)}%`, lbl: "Filter", color: filterInfo.pct <= 15 ? "#f59e0b" : "#16a34a" } : null,
-        ringB: !isNaN(fTemp) ? { pct: 75, val: `${Math.round(fTemp)}°`, lbl: "Fridge", color: "#0284c7" } : null,
+        ringB: fTemp !== null ? { pct: 75, val: `${Math.round(fTemp)}°`, lbl: "Fridge", color: "#0284c7" } : null,
         progressPct: null,
       };
     }
@@ -1048,8 +1107,8 @@ class PassableApplianceCard extends LitElement {
       const ov = u.oven;
       const uCtrl = this._getEntity(ov.upper_control);
       const lCtrl = this._getEntity(ov.lower_control);
-      const uRaw = parseFloat(this._getEntity(ov.upper_raw_temp).state);
-      const lRaw = parseFloat(this._getEntity(ov.lower_raw_temp).state);
+      const uRaw = parseFiniteNum(this._getEntity(ov.upper_raw_temp).state);
+      const lRaw = parseFiniteNum(this._getEntity(ov.lower_raw_temp).state);
       const uState = this._getEntity(ov.upper_state_entity).state;
       const lState = this._getEntity(ov.lower_state_entity).state;
       const isOff = (s) => !s || ["off", "idle", "unavailable", "unknown"].includes(String(s).toLowerCase());
@@ -1057,17 +1116,17 @@ class PassableApplianceCard extends LitElement {
       const lOn = !isOff(lCtrl.state) || !isOff(lState);
       const activeBurners = (u.cooktop?.burners || []).filter((b) => this._isEntityOn(b.status_entity));
       const anyActive = uOn || lOn || activeBurners.length > 0;
-      const uTarget = uCtrl.attributes?.temperature;
-      const lTarget = lCtrl.attributes?.temperature;
+      const uTarget = this._getOvenTargetTemp(ov.upper_control, ov.upper_display_temp, uOn);
+      const lTarget = this._getOvenTargetTemp(ov.lower_control, ov.lower_display_temp, lOn);
 
       let primaryVal = "Idle";
       let primarySub = "Ready";
-      if (lOn && !isNaN(lRaw)) {
-        primaryVal = `${Math.round(lRaw)}°F`;
-        primarySub = lTarget ? `Lower Set ${lTarget}°` : lState;
-      } else if (uOn && !isNaN(uRaw)) {
+      if (uOn && uRaw !== null) {
         primaryVal = `${Math.round(uRaw)}°F`;
-        primarySub = uTarget ? `Upper Set ${uTarget}°` : uState;
+        primarySub = uTarget ? `Upper Set ${Math.round(uTarget)}°` : uState;
+      } else if (lOn && lRaw !== null) {
+        primaryVal = `${Math.round(lRaw)}°F`;
+        primarySub = lTarget ? `Lower Set ${Math.round(lTarget)}°` : lState;
       } else if (activeBurners.length > 0) {
         primaryVal = `${activeBurners.length} On`;
         primarySub = span.powerText || "Cooktop";
@@ -1082,6 +1141,9 @@ class PassableApplianceCard extends LitElement {
       if (activeBurners.length > 0) chips.push({ label: `${activeBurners.length} Burner${activeBurners.length > 1 ? "s" : ""}`, cls: "heat" });
       if (span.amps !== null && span.amps >= 1) chips.push({ label: `${span.amps.toFixed(1)} A`, cls: "info" });
 
+      const activeOvenRaw = uOn && uRaw !== null ? uRaw : lOn && lRaw !== null ? lRaw : (uRaw !== null && lRaw !== null ? Math.max(uRaw, lRaw) : (uRaw ?? lRaw));
+      const ringLabel = uOn && !lOn ? "Upper" : lOn && !uOn ? "Lower" : "Oven";
+
       return {
         u,
         span,
@@ -1091,10 +1153,10 @@ class PassableApplianceCard extends LitElement {
         primarySub,
         statusSub: anyActive
           ? `${uOn ? "Upper " : ""}${lOn ? "Lower " : ""}${activeBurners.length > 0 ? `${activeBurners.length} Burners` : ""}`.trim()
-          : `All Elements Off${!isNaN(lRaw) && lRaw > 120 ? ` • Residual ${Math.round(lRaw)}°` : ""}`,
+          : `All Elements Off${activeOvenRaw !== null && activeOvenRaw > 120 ? ` • Warm ${Math.round(activeOvenRaw)}°` : ""}`,
         chips,
         ringA: { pct: activeBurners.length * 20, val: `${activeBurners.length}/5`, lbl: "Burners", color: "#f97316" },
-        ringB: !isNaN(lRaw) ? { pct: Math.min(100, (lRaw / 500) * 100), val: `${Math.round(lRaw)}°`, lbl: "Oven", color: lOn ? "#ef4444" : "#94a3b8" } : null,
+        ringB: activeOvenRaw !== null ? { pct: Math.min(100, (activeOvenRaw / 500) * 100), val: `${Math.round(activeOvenRaw)}°`, lbl: ringLabel, color: uOn || lOn ? "#ef4444" : "#94a3b8" } : null,
         progressPct: null,
       };
     }
@@ -1545,8 +1607,6 @@ class PassableApplianceCard extends LitElement {
 
   // --- 1. CAFÉ CYE22TP2MIS1 REFRIGERATOR ---
   _renderFullRefrigerator(u, idx) {
-    const fridgeCtrl = this._getEntity(u.fridge_control);
-    const freezerCtrl = this._getEntity(u.freezer_control);
     const fTemp = this._getEntity(u.fridge_temp_current);
     const zTemp = this._getEntity(u.freezer_temp_current);
     const hwStatus = this._getEntity(u.hot_water_status);
@@ -1554,8 +1614,7 @@ class PassableApplianceCard extends LitElement {
     const doorInfo = this._getDoorStatusInfo(u);
     const filterInfo = this._getWaterFilterInfo(u);
     const iceBucket = this._getEntity(u.ice_bucket_status).state;
-    const fSet = fridgeCtrl.attributes?.temperature ?? 37;
-    const zSet = freezerCtrl.attributes?.temperature ?? 0;
+    const { fSet, zSet } = this._getFridgeSetpoints(u);
     const isHeating = hwStatus.state === "Heating";
 
     const chipText = doorInfo.isAnyOpen
@@ -1648,6 +1707,8 @@ class PassableApplianceCard extends LitElement {
   _renderFullInductionRange(u, idx) {
     const ov = u.oven;
     const burners = (u.cooktop?.burners || []).map((b) => ({
+      shortLabel: b.shortLabel || "EL",
+      label: b.label || "Element",
       status: this._getEntity(b.status_entity),
       power: b.power_entity ? this._getEntity(b.power_entity) : null,
     }));
@@ -1663,10 +1724,29 @@ class PassableApplianceCard extends LitElement {
     const isOff = (s) => !s || ["off", "idle", "unavailable", "unknown"].includes(String(s).toLowerCase());
     const uOn = !isOff(uCtrl.state) || !isOff(uState);
     const lOn = !isOff(lCtrl.state) || !isOff(lState);
-    const isSynced = this._isEntityOn(u.cooktop?.sync_entities?.left_front);
+    const uSet = this._getOvenTargetTemp(ov.upper_control, ov.upper_display_temp, uOn);
+    const lSet = this._getOvenTargetTemp(ov.lower_control, ov.lower_display_temp, lOn);
+    const isSynced =
+      this._isEntityOn(u.cooktop?.sync_entities?.left_front) ||
+      this._isEntityOn(u.cooktop?.sync_entities?.left_rear);
 
     const chipCls = anyBurner || uOn || lOn ? "active-heat" : "idle";
     const chipTxt = anyBurner && (uOn || lOn) ? "RANGE ACTIVE" : anyBurner ? "COOKTOP ON" : uOn || lOn ? "OVEN ON" : "IDLE";
+    const screenText = uOn && uSet
+      ? `UP ${Math.round(uSet)}°F`
+      : lOn && lSet
+      ? `LO ${Math.round(lSet)}°F`
+      : anyBurner
+      ? "COOKTOP"
+      : "READY";
+
+    const burnerSvgSpec = [
+      { cx: 78, cy: 166, r: 40, tag: "LF" },
+      { cx: 78, cy: 58, r: 40, tag: "LR" },
+      { cx: 184, cy: 52, r: 29, tag: "WARM", warm: true },
+      { cx: 286, cy: 52, r: 34, tag: "RR" },
+      { cx: 264, cy: 160, r: 48, tag: "RF", dual: true },
+    ];
 
     return html`
       ${this.config.show_header !== false
@@ -1688,36 +1768,88 @@ class PassableApplianceCard extends LitElement {
 
       <div class="card-content">
         <div class="graphics-container">
-          <!-- 5-Burner Induction Ceramic Glass Top -->
+          <!-- 5-Burner Induction Ceramic Glass Top (Fixed Proportional SVG Coordinates) -->
           <div class="cooktop-container">
-            ${burners[0] ? this._renderBurner(burners[0], "top:48%; left:12%; width:26%;") : ""}
-            ${burners[1] ? this._renderBurner(burners[1], "top:4%; left:12%; width:26%;") : ""}
-            ${burners[2] ? this._renderBurner(burners[2], "top:6%; left:42%; width:21%;") : ""}
-            ${burners[3] ? this._renderBurner(burners[3], "top:6%; left:68%; width:21%;") : ""}
-            ${burners[4] ? this._renderBurner(burners[4], "top:41%; left:55%; width:31%;") : ""}
-            <div class="sync-line ${isSynced ? "synced-on" : ""}" style="left:12%;"></div>
-            <div class="sync-line ${isSynced ? "synced-on" : ""}" style="left:36%;"></div>
+            ${svg`
+              <svg class="cooktop-svg" viewBox="0 0 360 224" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="cookGlass-${this._cardId}" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#222328" />
+                    <stop offset="100%" stop-color="#141519" />
+                  </linearGradient>
+                </defs>
+                <rect x="2" y="2" width="356" height="220" rx="12" fill="url(#cookGlass-${this._cardId})" stroke="rgba(148,163,184,0.22)" stroke-width="1.5" />
+
+                <!-- Symmetric SyncBurners Bridge connecting LR (78,58,r=40) & LF (78,166,r=40) -->
+                <g class="sync-bridge ${isSynced ? "synced-on" : ""}">
+                  <line x1="58" y1="92.6" x2="58" y2="131.4" stroke="${isSynced ? "#f97316" : "#475569"}" stroke-width="4" stroke-linecap="round" />
+                  <line x1="98" y1="92.6" x2="98" y2="131.4" stroke="${isSynced ? "#f97316" : "#475569"}" stroke-width="4" stroke-linecap="round" />
+                  <rect x="61" y="104" width="34" height="16" rx="8" fill="#18181b" stroke="${isSynced ? "#f97316" : "#475569"}" stroke-width="1.4" />
+                  <text x="78" y="112" text-anchor="middle" dominant-baseline="central" font-size="8.5" font-weight="800" letter-spacing="0.06em" fill="${isSynced ? "#fb923c" : "#94a3b8"}">SYNC</text>
+                </g>
+
+                ${burnerSvgSpec.map((spec, bIdx) => {
+                  const b = burners[bIdx];
+                  if (!b) return "";
+                  const isOn = this._isEntityOn(b.status.entity_id);
+                  const pwr = b.power ? parseFiniteNum(b.power.state) : null;
+                  const valText = isOn ? (pwr !== null ? `${Math.round(pwr)}%` : "On") : "Off";
+                  const strokeCol = isOn ? "#f97316" : "#64748b";
+                  return svg`
+                    <g
+                      class="burner-group ${isOn ? "burner-on" : "burner-off"}"
+                      @click=${() => this._showMoreInfo(b.status.entity_id)}
+                    >
+                      <circle
+                        cx="${spec.cx}"
+                        cy="${spec.cy}"
+                        r="${spec.r}"
+                        fill="${isOn ? "rgba(249,115,22,0.22)" : "rgba(255,255,255,0.02)"}"
+                        stroke="${strokeCol}"
+                        stroke-width="${isOn ? 2.6 : 2}"
+                      />
+                      ${spec.dual
+                        ? svg`<circle cx="${spec.cx}" cy="${spec.cy}" r="${Math.round(spec.r * 0.62)}" fill="none" stroke="${strokeCol}" stroke-opacity="0.45" stroke-width="1.4" />`
+                        : spec.warm
+                        ? svg`<circle cx="${spec.cx}" cy="${spec.cy}" r="${Math.round(spec.r * 0.64)}" fill="none" stroke="${strokeCol}" stroke-opacity="0.38" stroke-dasharray="4 3" stroke-width="1.2" />`
+                        : ""}
+                      <text x="${spec.cx}" y="${spec.cy - 7}" text-anchor="middle" dominant-baseline="central" font-size="8.5" font-weight="700" letter-spacing="0.06em" fill="${isOn ? "#fdba74" : "#94a3b8"}">${spec.tag}</text>
+                      <text x="${spec.cx}" y="${spec.cy + 7}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="800" fill="#f8fafc">${valText}</text>
+                    </g>
+                  `;
+                })}
+              </svg>
+            `}
           </div>
 
           <!-- Front Knobs & Upper / Lower Ovens -->
           <div class="oven-container">
             <div class="oven-control-panel">
-              <svg width="100%" height="100%" viewBox="0 0 180 32" preserveAspectRatio="xMidYMid meet">
-                <circle class="oven-knob" cx="15" cy="16" r="8" />
-                <circle class="oven-knob" cx="35" cy="16" r="8" />
-                <circle class="oven-knob" cx="55" cy="16" r="8" />
-                <rect class="oven-screen" x="70" y="6" width="40" height="20" rx="3" />
-                <circle class="oven-knob" cx="125" cy="16" r="8" />
-                <circle class="oven-knob" cx="145" cy="16" r="8" />
-                <circle class="oven-knob" cx="165" cy="16" r="8" />
-              </svg>
+              ${svg`
+                <svg width="100%" height="100%" viewBox="0 0 320 40" preserveAspectRatio="xMidYMid meet">
+                  ${[26, 58, 90, 230, 262, 294].map(
+                    (kx) => svg`
+                      <g>
+                        <circle cx="${kx}" cy="20" r="10.5" fill="var(--secondary-background-color, #27272a)" stroke="var(--divider-color, #94a3b8)" stroke-width="2" />
+                        <circle cx="${kx}" cy="20" r="5" fill="none" stroke="#b87352" stroke-width="1.4" opacity="0.85" />
+                        <line x1="${kx}" y1="10" x2="${kx}" y2="15" stroke="var(--primary-text-color, #f8fafc)" stroke-width="1.8" stroke-linecap="round" />
+                      </g>
+                    `
+                  )}
+                  <rect x="110" y="6" width="100" height="28" rx="6" fill="#18181b" stroke="${uOn || lOn ? "#f97316" : "var(--divider-color, #475569)"}" stroke-width="1.3" />
+                  <text x="160" y="20" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="800" letter-spacing="0.06em" fill="${uOn || lOn ? "#fb923c" : "#94a3b8"}">${screenText}</text>
+                </svg>
+              `}
             </div>
 
             <div class="oven upper-oven ${uOn ? "oven-on" : ""} ${uLightOn ? "light-on" : ""}" @click=${() => this._openModal(idx, "primary")}>
               <div class="oven-handle"><span class="copper-cuff left"></span><span class="copper-cuff right"></span></div>
               <div class="oven-info">
                 <span class="oven-state">Upper: ${uState !== "unavailable" ? uState : "Off"}</span>
-                <span class="oven-temps">${uRaw !== "unavailable" ? `${uRaw}°F` : "--"}</span>
+                <span class="oven-temps">
+                  ${uRaw !== "unavailable" ? `${Math.round(parseFloat(uRaw))}°F` : "--"}
+                  ${uOn && uSet ? ` → ${Math.round(uSet)}°F` : ""}
+                </span>
               </div>
             </div>
 
@@ -1725,22 +1857,14 @@ class PassableApplianceCard extends LitElement {
               <div class="oven-handle"><span class="copper-cuff left"></span><span class="copper-cuff right"></span></div>
               <div class="oven-info">
                 <span class="oven-state">Lower: ${lState !== "unavailable" ? lState : "Off"}</span>
-                <span class="oven-temps">${lRaw !== "unavailable" ? `${lRaw}°F` : "--"}</span>
+                <span class="oven-temps">
+                  ${lRaw !== "unavailable" ? `${Math.round(parseFloat(lRaw))}°F` : "--"}
+                  ${lOn && lSet ? ` → ${Math.round(lSet)}°F` : ""}
+                </span>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    `;
-  }
-
-  _renderBurner(burner, style) {
-    const isOn = this._isEntityOn(burner.status.entity_id);
-    const pwr = burner.power && burner.power.state !== "unavailable" ? Math.round(parseFloat(burner.power.state) || 0) : null;
-    const text = isOn ? (pwr !== null ? `${pwr}%` : "On") : "Off";
-    return html`
-      <div class="burner ${isOn ? "burner-on" : "burner-off"}" style="${style}" @click=${() => this._showMoreInfo(burner.status.entity_id)}>
-        <span class="status-text">${text}</span>
       </div>
     `;
   }
@@ -1883,8 +2007,8 @@ class PassableApplianceCard extends LitElement {
                 <button type="button" class="strip-circle-btn" @click=${() => this._openModal(idx, "tertiary")} title="Flush Guide">
                   <ha-icon icon="mdi:wrench-outline" style="--mdc-icon-size:15px;"></ha-icon>
                 </button>
-                <div class="status-chip ${isPwrOff ? "power-off" : isHeating ? "heating" : "idle"}">
-                  ${isPwrOff ? "POWER OFF" : isHeating ? "HEATING" : "IDLE"}
+                <div class="status-chip ${isPwrOff ? "power-off" : isHeating ? "heating" : isRecirc ? "active-washer" : "idle"}">
+                  ${isPwrOff ? "POWER OFF" : isHeating ? "HEATING" : isRecirc ? "RECIRCULATING" : "IDLE"}
                 </div>
               </div>
             </div>
@@ -1988,6 +2112,7 @@ class PassableApplianceCard extends LitElement {
   _renderRecircDrawer(u) {
     const intervalObj = u.recirc_interval ? this._getEntity(u.recirc_interval) : null;
     const intervalVal = intervalObj && !isNaN(parseFloat(intervalObj.state)) ? Math.round(parseFloat(intervalObj.state)) : null;
+    const cooldownObj = u.recirc_cooldown ? this._getEntity(u.recirc_cooldown) : null;
 
     return html`
       <div class="settings-drawer">
@@ -2004,6 +2129,14 @@ class PassableApplianceCard extends LitElement {
                     <ha-icon icon="mdi:plus"></ha-icon>
                   </button>
                 </div>
+              </div>
+            `
+          : ""}
+        ${cooldownObj && cooldownObj.state === "active"
+          ? html`
+              <div class="drawer-row">
+                <span>Recirc Cooldown</span>
+                <strong class="tone-warn">Cooldown Active</strong>
               </div>
             `
           : ""}
@@ -2312,24 +2445,27 @@ class PassableApplianceCard extends LitElement {
 
           ${units.length > 1
             ? html`
-                <div class="unit-switcher-row">
-                  ${units.map(
-                    (item, i) => html`
-                      <button
-                        type="button"
-                        class="unit-switch-pill ${i === this._activeUnitIdx ? "active" : ""}"
-                        @click=${() => {
-                          this._activeUnitIdx = i;
-                          this._activeTab = "primary";
-                          if (item.appliance_type === "water_heater" && item.recirc_switch) {
-                            this._fetchRecircHistory(item.recirc_switch);
-                          }
-                        }}
-                      >
-                        <span>${item.title}</span>
-                      </button>
-                    `
-                  )}
+                <div class="unit-select-bar">
+                  <ha-icon icon="${APPLIANCE_META[u.appliance_type]?.icon || "mdi:home-automation"}" style="--mdc-icon-size:18px; color:var(--primary-color);"></ha-icon>
+                  <div class="select-wrap full">
+                    <select
+                      class="passable-select"
+                      aria-label="Select appliance"
+                      .value=${String(this._activeUnitIdx)}
+                      @change=${(e) => {
+                        const nextIdx = parseInt(e.target.value, 10) || 0;
+                        this._activeUnitIdx = nextIdx;
+                        this._activeTab = "primary";
+                        const item = units[nextIdx];
+                        if (item?.appliance_type === "water_heater" && item.recirc_switch) {
+                          this._fetchRecircHistory(item.recirc_switch);
+                        }
+                      }}
+                    >
+                      ${units.map((item, i) => html`<option value="${String(i)}">${item.title}</option>`)}
+                    </select>
+                    <ha-icon icon="mdi:chevron-down" class="select-chevron"></ha-icon>
+                  </div>
                 </div>
               `
             : ""}
@@ -2366,10 +2502,67 @@ class PassableApplianceCard extends LitElement {
     return this._renderHoseModalTab(u);
   }
 
-  _renderTempStepperCard({ title, entityId, currentTemp, min, max, step = 1, presets = [], modeConfig = null }) {
-    const obj = this._getEntity(entityId);
-    const target = this._getTargetTemp(entityId, min);
+  _renderSelectRow({ label, icon = "mdi:tune", value, options = [], onChange, formatOpt = null, actionPill = null }) {
+    const cleanOpts = (options || []).filter((o) => {
+      const low = String(o).toLowerCase();
+      return (low !== "unknown" && low !== "unavailable") || String(o) === String(value);
+    });
+    if (cleanOpts.length === 0) return "";
+    return html`
+      <div class="passable-select-row">
+        <div class="select-row-label">
+          <ha-icon icon="${icon}" style="--mdc-icon-size:17px; color:var(--primary-color);"></ha-icon>
+          <span>${label}</span>
+        </div>
+        <div class="select-row-controls">
+          ${actionPill
+            ? html`
+                <button type="button" class="switch-pill ${actionPill.active ? "active" : ""}" @click=${actionPill.onClick}>
+                  ${actionPill.label}
+                </button>
+              `
+            : ""}
+          <div class="select-wrap">
+            <select
+              class="passable-select"
+              aria-label="${label}"
+              .value=${String(value ?? cleanOpts[0])}
+              @change=${(e) => onChange(e.target.value)}
+            >
+              ${cleanOpts.map(
+                (opt) => html`<option value="${opt}" ?selected=${String(opt).toLowerCase() === String(value).toLowerCase()}>${formatOpt ? formatOpt(opt) : formatTitleCase(opt)}</option>`
+              )}
+            </select>
+            <ha-icon icon="mdi:chevron-down" class="select-chevron"></ha-icon>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderTempStepperCard({
+    title,
+    entityId,
+    currentTemp,
+    min,
+    max,
+    step = 1,
+    presets = [],
+    modeConfig = null,
+    allowZeroOrNegative = false,
+    stagingDefault = null,
+    offDisplay = null,
+    explicitTarget = undefined,
+  }) {
+    const resolvedTarget =
+      explicitTarget !== undefined
+        ? explicitTarget
+        : this._getTargetTemp(entityId, stagingDefault ?? min, { allowZeroOrNegative });
+    const hasActiveTarget = resolvedTarget !== null && resolvedTarget !== undefined && !isNaN(resolvedTarget);
     const isHeating = modeConfig && String(modeConfig.currentMode).toLowerCase() !== "off";
+    const tempOpts = { allowZeroOrNegative, stagingDefault };
+    const offOpt = modeConfig?.options?.find((o) => String(o).toLowerCase() === "off");
+
     return html`
       <div class="passable-section-card">
         <div class="passable-section-header">
@@ -2380,44 +2573,41 @@ class PassableApplianceCard extends LitElement {
         </div>
 
         ${modeConfig && modeConfig.options?.length > 0
-          ? html`
-              <div class="chip-select-row">
-                ${modeConfig.options.map(
-                  (opt) => html`
-                    <button
-                      class="opt-chip ${String(modeConfig.currentMode).toLowerCase() === opt.toLowerCase() ? "active" : ""}"
-                      @click=${() => modeConfig.onModeChange(opt)}
-                    >
-                      ${opt}
-                    </button>
-                  `
-                )}
-              </div>
-            `
+          ? this._renderSelectRow({
+              label: modeConfig.label || "Mode",
+              icon: modeConfig.icon || "mdi:tune",
+              value: modeConfig.currentMode,
+              options: modeConfig.options,
+              onChange: (opt) => modeConfig.onModeChange(opt),
+              actionPill:
+                offOpt && isHeating
+                  ? { label: "Off", active: false, onClick: () => modeConfig.onModeChange(offOpt) }
+                  : null,
+            })
           : ""}
 
         <div class="temp-dial-row">
           <button
             class="temp-stepper-btn"
-            @mousedown=${() => this._startHold(entityId, -step, min, max)}
-            @touchstart=${() => this._startHold(entityId, -step, min, max)}
+            @mousedown=${() => this._startHold(entityId, -step, min, max, tempOpts)}
+            @touchstart=${() => this._startHold(entityId, -step, min, max, tempOpts)}
             @mouseup=${() => this._stopHold(entityId)}
             @touchend=${() => this._stopHold(entityId)}
-            @click=${() => !this._wasHolding && this._adjustTemp(entityId, -step, min, max)}
+            @click=${() => !this._wasHolding && this._adjustTemp(entityId, -step, min, max, tempOpts)}
           >
             <ha-icon icon="mdi:minus"></ha-icon>
           </button>
           <div class="temp-dial-center">
-            <span class="temp-main-number">${Math.round(target)}°</span>
-            <span class="temp-main-caption">${isHeating ? modeConfig.currentMode : "SETPOINT"}</span>
+            <span class="temp-main-number">${hasActiveTarget ? `${Math.round(resolvedTarget)}°` : (offDisplay || "Off")}</span>
+            <span class="temp-main-caption">${hasActiveTarget ? (isHeating ? modeConfig.currentMode : "SETPOINT") : (offDisplay ? "STANDBY" : "OFF")}</span>
           </div>
           <button
             class="temp-stepper-btn"
-            @mousedown=${() => this._startHold(entityId, step, min, max)}
-            @touchstart=${() => this._startHold(entityId, step, min, max)}
+            @mousedown=${() => this._startHold(entityId, step, min, max, tempOpts)}
+            @touchstart=${() => this._startHold(entityId, step, min, max, tempOpts)}
             @mouseup=${() => this._stopHold(entityId)}
             @touchend=${() => this._stopHold(entityId)}
-            @click=${() => !this._wasHolding && this._adjustTemp(entityId, step, min, max)}
+            @click=${() => !this._wasHolding && this._adjustTemp(entityId, step, min, max, tempOpts)}
           >
             <ha-icon icon="mdi:plus"></ha-icon>
           </button>
@@ -2425,12 +2615,12 @@ class PassableApplianceCard extends LitElement {
 
         ${presets.length > 0
           ? html`
-              <div class="chip-select-row">
+              <div class="preset-grid-3">
                 ${presets.map(
                   (p) => html`
                     <button
-                      class="opt-chip ${Math.round(target) === p.temp ? "active" : ""}"
-                      @click=${() => this._setTemperature(entityId, p.temp)}
+                      class="opt-chip ${hasActiveTarget && Math.round(resolvedTarget) === p.temp ? "active" : ""}"
+                      @click=${() => this._setTemperature(entityId, p.temp, min, max)}
                     >
                       ${p.label} (${p.temp}°)
                     </button>
@@ -2444,10 +2634,11 @@ class PassableApplianceCard extends LitElement {
   }
 
   _renderFridgeModalTab(u) {
+    const { fSet, zSet } = this._getFridgeSetpoints(u);
     if (this._activeTab === "primary") {
-      const fCur = parseFloat(this._getEntity(u.fridge_temp_current).state);
-      const minF = parseInt(this._getEntity(u.fridge_min_entity).state, 10) || 34;
-      const maxF = parseInt(this._getEntity(u.fridge_max_entity).state, 10) || 42;
+      const fCur = parseFiniteNum(this._getEntity(u.fridge_temp_current).state);
+      const minF = parseFiniteNum(this._getEntity(u.fridge_min_entity).state, 34);
+      const maxF = parseFiniteNum(this._getEntity(u.fridge_max_entity).state, 42);
       const doorInfo = this._getDoorStatusInfo(u);
       return html`
         ${this._renderTempStepperCard({
@@ -2456,9 +2647,10 @@ class PassableApplianceCard extends LitElement {
           currentTemp: fCur,
           min: minF,
           max: maxF,
+          explicitTarget: fSet,
           presets: [
             { label: "Coldest", temp: minF },
-            { label: "Recommended", temp: 37 },
+            { label: "Rec.", temp: 37 },
             { label: "Eco", temp: maxF },
           ],
         })}
@@ -2476,10 +2668,12 @@ class PassableApplianceCard extends LitElement {
     }
     if (this._activeTab === "secondary") {
       const disp = this._getEntity(u.dispenser_control);
-      const hwCur = parseFloat(this._getEntity(u.hot_water_current_temp).state);
+      const hwCur = parseFiniteNum(this._getEntity(u.hot_water_current_temp).state);
+      const hwSetRaw = parseFiniteNum(disp.attributes?.temperature) || parseFiniteNum(this._getEntity(u.hot_water_set_temp).state) || 0;
       const hwStatus = this._getEntity(u.hot_water_status).state;
       const kCupOn = this._isEntityOn(u.hot_water_cancel_switch);
       const iceBucket = this._getEntity(u.ice_bucket_status).state;
+      const activeKcTarget = this._localTemps[u.dispenser_control] ?? (hwSetRaw >= 90 ? hwSetRaw : null);
       return html`
         ${this._renderTempStepperCard({
           title: "Keurig K-Cup & Hot Water Dispenser",
@@ -2488,10 +2682,13 @@ class PassableApplianceCard extends LitElement {
           min: 90,
           max: 190,
           step: 5,
+          stagingDefault: 150,
+          explicitTarget: activeKcTarget,
+          offDisplay: "Off",
           presets: [
             { label: "Cocoa", temp: 150 },
             { label: "Tea", temp: 170 },
-            { label: "Pour Over", temp: 190 },
+            { label: "Pour", temp: 190 },
           ],
         })}
         <div class="passable-section-card">
@@ -2517,9 +2714,9 @@ class PassableApplianceCard extends LitElement {
         </div>
       `;
     }
-    const zCur = parseFloat(this._getEntity(u.freezer_temp_current).state);
-    const minZ = parseInt(this._getEntity(u.freezer_min_entity).state, 10) || -6;
-    const maxZ = parseInt(this._getEntity(u.freezer_max_entity).state, 10) || 5;
+    const zCur = parseFiniteNum(this._getEntity(u.freezer_temp_current).state);
+    const minZ = parseFiniteNum(this._getEntity(u.freezer_min_entity).state, -6);
+    const maxZ = parseFiniteNum(this._getEntity(u.freezer_max_entity).state, 5);
     const filterInfo = this._getWaterFilterInfo(u);
     return html`
       ${this._renderTempStepperCard({
@@ -2528,6 +2725,8 @@ class PassableApplianceCard extends LitElement {
         currentTemp: zCur,
         min: minZ,
         max: maxZ,
+        allowZeroOrNegative: true,
+        explicitTarget: zSet,
         presets: [
           { label: "Deep", temp: minZ },
           { label: "Standard", temp: 0 },
@@ -2551,14 +2750,17 @@ class PassableApplianceCard extends LitElement {
     if (this._activeTab === "primary" || this._activeTab === "secondary") {
       const isUpper = this._activeTab === "primary";
       const ctrlId = isUpper ? ov.upper_control : ov.lower_control;
+      const dispId = isUpper ? ov.upper_display_temp : ov.lower_display_temp;
       const ctrlObj = this._getEntity(ctrlId);
-      const rawTemp = parseFloat(this._getEntity(isUpper ? ov.upper_raw_temp : ov.lower_raw_temp).state);
+      const rawTemp = parseFiniteNum(this._getEntity(isUpper ? ov.upper_raw_temp : ov.lower_raw_temp).state);
       const lightId = isUpper ? ov.upper_light_entity : ov.lower_light_entity;
       const isLightOn = this._isEntityOn(lightId);
       const remoteOn = this._isEntityOn(isUpper ? ov.upper_remote_enabled : ov.lower_remote_enabled);
       const timerRem = this._getEntity(isUpper ? ov.upper_cook_remaining : ov.lower_cook_remaining).state;
       const kitchTimer = this._getEntity(isUpper ? ov.upper_kitchen_timer : ov.lower_kitchen_timer).state;
       const mode = ctrlObj.attributes?.operation_mode || ctrlObj.state || "off";
+      const isOn = String(mode).toLowerCase() !== "off";
+      const ovenTarget = this._getOvenTargetTemp(ctrlId, dispId, isOn);
       const opList = ctrlObj.attributes?.operation_list || ["off", "Bake", "Convection Roast", "Air Fry"];
 
       return html`
@@ -2566,16 +2768,21 @@ class PassableApplianceCard extends LitElement {
           title: isUpper ? "Upper Oven" : "Lower Convection & Air Fry Oven",
           entityId: ctrlId,
           currentTemp: rawTemp,
-          min: ctrlObj.attributes?.min_temp || 170,
-          max: ctrlObj.attributes?.max_temp || 550,
+          min: parseFiniteNum(ctrlObj.attributes?.min_temp, 170),
+          max: parseFiniteNum(ctrlObj.attributes?.max_temp, 550),
           step: 5,
+          stagingDefault: 350,
+          explicitTarget: ovenTarget,
+          offDisplay: "Off",
           modeConfig: {
+            label: "Cook Mode",
+            icon: "mdi:stove",
             currentMode: mode,
             options: opList,
             onModeChange: (newMode) => {
               this._setOperationMode(ctrlId, newMode);
               if (newMode.toLowerCase() !== "off" && this._getTargetTemp(ctrlId, 0) < 170) {
-                this._setTemperature(ctrlId, 350);
+                this._setTemperature(ctrlId, 350, 170, 550);
               }
             },
           },
@@ -2600,25 +2807,47 @@ class PassableApplianceCard extends LitElement {
       `;
     }
 
+    const soundObj = ov.sound_level ? this._getEntity(ov.sound_level) : null;
+    const toneObj = ov.end_tone ? this._getEntity(ov.end_tone) : null;
+
     return html`
       <div class="passable-section-card">
         <div class="passable-section-header"><span class="passable-section-title">Cooktop Burners & Power</span></div>
-        ${(u.cooktop?.burners || []).map((b) => {
+        ${(u.cooktop?.burners || []).map((b, i) => {
           const on = this._isEntityOn(b.status_entity);
           const pwr = b.power_entity ? this._getEntity(b.power_entity).state : null;
+          const lbl = b.label || `Element ${b.shortLabel || i + 1}`;
           return html`<div class="drawer-row">
-            <span>Element ${b.label}</span>
+            <span>${lbl}</span>
             <strong class="${on ? "tone-heat" : ""}">${on ? (pwr && pwr !== "unavailable" ? `ON · ${pwr}%` : "ON") : "Off"}</strong>
           </div>`;
         })}
         ${snap.span.powerText
-          ? html`<div class="drawer-row"><span>SPAN Circuit Draw</span><strong>${snap.span.powerText} (${snap.span.amps?.toFixed(1)} A)</strong></div>`
+          ? html`<div class="drawer-row"><span>SPAN Circuit Draw</span><strong>${snap.span.powerText}${snap.span.amps !== null ? ` (${snap.span.amps.toFixed(1)} A)` : ""}</strong></div>`
           : ""}
         ${this._hasEntity(ov.control_lock)
           ? html`<div class="drawer-row"><span>Control Lock</span><button class="switch-pill ${this._isEntityOn(ov.control_lock) ? "active" : ""}" @click=${() => this._toggleEntity(ov.control_lock)}>${this._isEntityOn(ov.control_lock) ? "LOCKED" : "OFF"}</button></div>`
           : ""}
         ${this._hasEntity(ov.convection_conversion)
           ? html`<div class="drawer-row"><span>Convection Auto-Conversion</span><button class="switch-pill ${this._isEntityOn(ov.convection_conversion) ? "active" : ""}" @click=${() => this._toggleEntity(ov.convection_conversion)}>${this._isEntityOn(ov.convection_conversion) ? "ON" : "OFF"}</button></div>`
+          : ""}
+        ${soundObj && soundObj.attributes?.options?.length > 0
+          ? this._renderSelectRow({
+              label: "Sound Level",
+              icon: "mdi:volume-high",
+              value: soundObj.state,
+              options: soundObj.attributes.options,
+              onChange: (opt) => this._selectOption(soundObj.entity_id, opt),
+            })
+          : ""}
+        ${toneObj && toneObj.attributes?.options?.length > 0
+          ? this._renderSelectRow({
+              label: "Timer End Tone",
+              icon: "mdi:bell-ring-outline",
+              value: toneObj.state,
+              options: toneObj.attributes.options,
+              onChange: (opt) => this._selectOption(toneObj.entity_id, opt),
+            })
           : ""}
       </div>
     `;
@@ -2635,6 +2864,7 @@ class PassableApplianceCard extends LitElement {
       const totObj = this._getEntity(isW ? u.washer_total_time : u.dryer_total_time);
       const isAct = !["off", "power_off", "idle", "end", "unavailable", "unknown"].includes(String(statusObj.state).toLowerCase());
       const timing = this._computeLaundryTiming(remObj.state, totObj.state, isAct);
+      const opIcon = (opt) => (opt === "start" ? "mdi:play" : opt === "stop" ? "mdi:stop" : "mdi:power");
 
       return html`
         <div class="passable-section-card">
@@ -2653,11 +2883,11 @@ class PassableApplianceCard extends LitElement {
             : ""}
           ${opObj.attributes?.options?.length > 0
             ? html`
-                <div class="chip-select-row">
+                <div class="laundry-cmd-grid">
                   ${opObj.attributes.options.map(
                     (opt) => html`
                       <button
-                        class="opt-chip ${opObj.state === opt ? "active" : ""}"
+                        class="cmd-transport-btn ${opObj.state === opt ? "active" : ""}"
                         @click=${() => {
                           if (opt === "start" && !remoteOk) {
                             this._showToast("Enable Remote Start on machine first");
@@ -2667,7 +2897,8 @@ class PassableApplianceCard extends LitElement {
                           this._showToast(`Sent ${formatTitleCase(opt)}`);
                         }}
                       >
-                        ${formatTitleCase(opt)}
+                        <ha-icon icon="${opIcon(opt)}"></ha-icon>
+                        <span>${formatTitleCase(opt)}</span>
                       </button>
                     `
                   )}
@@ -2709,7 +2940,7 @@ class PassableApplianceCard extends LitElement {
   _renderWaterHeaterModalTab(u) {
     if (this._activeTab === "primary") {
       const mainObj = this._getEntity(u.entity);
-      const outCur = parseFloat(this._getEntity(u.outlet_temp_sensor).state);
+      const outCur = parseFiniteNum(this._getEntity(u.outlet_temp_sensor).state);
       const gasTot = this._getEntity(u.cumulative_gas_sensor).state;
       const errCode = this._getEntity(u.error_code).state;
       const opList = mainObj.attributes?.operation_list || ["off", "gas"];
@@ -2718,8 +2949,8 @@ class PassableApplianceCard extends LitElement {
           title: "Navien NPE-240A2 Setpoint",
           entityId: u.entity,
           currentTemp: outCur,
-          min: mainObj.attributes?.min_temp || 97,
-          max: mainObj.attributes?.max_temp || 185,
+          min: parseFiniteNum(mainObj.attributes?.min_temp, 97),
+          max: parseFiniteNum(mainObj.attributes?.max_temp, 185),
           step: 1,
           presets: [
             { label: "Eco", temp: 115 },
@@ -2727,6 +2958,8 @@ class PassableApplianceCard extends LitElement {
             { label: "Hot", temp: 135 },
           ],
           modeConfig: {
+            label: "Operation Mode",
+            icon: "mdi:water-boiler",
             currentMode: mainObj.attributes?.operation_mode || mainObj.state,
             options: opList,
             onModeChange: (m) => this._setOperationMode(u.entity, m),
@@ -2796,13 +3029,13 @@ class PassableApplianceCard extends LitElement {
       return html`
         <div class="passable-section-card">
           ${modeObj.attributes?.options
-            ? html`
-                <div class="chip-select-row">
-                  ${modeObj.attributes.options.map(
-                    (opt) => html`<button class="opt-chip ${modeObj.state === opt ? "active" : ""}" @click=${() => this._selectOption(modeObj.entity_id, opt)}>${formatTitleCase(opt)}</button>`
-                  )}
-                </div>
-              `
+            ? this._renderSelectRow({
+                label: "Device Mode",
+                icon: "mdi:sprinkler-variant",
+                value: modeObj.state,
+                options: modeObj.attributes.options,
+                onChange: (opt) => this._selectOption(modeObj.entity_id, opt),
+              })
             : ""}
           ${this._hasEntity(u.smart_watering_switch)
             ? html`<div class="drawer-row"><span>Smart Watering</span><button class="switch-pill ${this._isEntityOn(u.smart_watering_switch) ? "active" : ""}" @click=${() => this._toggleEntity(u.smart_watering_switch)}>${this._isEntityOn(u.smart_watering_switch) ? "ON" : "OFF"}</button></div>`
@@ -2860,18 +3093,19 @@ class PassableApplianceCard extends LitElement {
           : html`
               ${units.length > 1
                 ? html`
-                    <div class="unit-switcher-row" style="padding: 12px 12px 0;">
-                      ${units.map(
-                        (item, i) => html`
-                          <button
-                            type="button"
-                            class="unit-switch-pill ${i === activeFullIdx ? "active" : ""}"
-                            @click=${() => (this._activeUnitIdx = i)}
-                          >
-                            <span>${item.title}</span>
-                          </button>
-                        `
-                      )}
+                    <div class="unit-select-bar" style="padding: 12px 12px 0;">
+                      <ha-icon icon="${APPLIANCE_META[units[activeFullIdx]?.appliance_type]?.icon || "mdi:home-automation"}" style="--mdc-icon-size:18px; color:var(--primary-color);"></ha-icon>
+                      <div class="select-wrap full">
+                        <select
+                          class="passable-select"
+                          aria-label="Select appliance"
+                          .value=${String(activeFullIdx)}
+                          @change=${(e) => (this._activeUnitIdx = parseInt(e.target.value, 10) || 0)}
+                        >
+                          ${units.map((item, i) => html`<option value="${String(i)}">${item.title}</option>`)}
+                        </select>
+                        <ha-icon icon="mdi:chevron-down" class="select-chevron"></ha-icon>
+                      </div>
                     </div>
                   `
                 : ""}
@@ -3086,15 +3320,11 @@ class PassableApplianceCard extends LitElement {
       /* CAFÉ INDUCTION RANGE CHASSIS */
       .graphics-container { display: flex; flex-wrap: wrap; gap: 16px; }
       .cooktop-container, .oven-container { flex: 1; min-width: 240px; }
-      .cooktop-container { aspect-ratio: 1.75 / 1; background: #18181b; border: 1px solid var(--divider-color); border-radius: 12px; position: relative; }
-      .burner { position: absolute; border: 2px solid #64748b; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; aspect-ratio: 1; z-index: 1; color: #f8fafc; font-weight: 700; font-size: 12px; }
-      .burner-on { border-color: #f97316; background: rgba(249,115,22,0.22); box-shadow: 0 0 16px rgba(249,115,22,0.35); }
-      .sync-line { position: absolute; top: 36%; height: 24%; width: 2%; background: #475569; border-radius: 6px; }
-      .sync-line.synced-on { background: #f97316; box-shadow: 0 0 8px #f97316; }
-      .oven-container { height: 240px; background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 12px; display: flex; flex-direction: column; padding: 8px; gap: 8px; box-sizing: border-box; }
-      .oven-control-panel { height: 34px; background: var(--ha-card-background, #fff); border-radius: 8px; border: 1px solid var(--divider-color); padding: 2px 8px; }
-      .oven-knob { fill: transparent; stroke: var(--secondary-text-color); stroke-width: 2; }
-      .oven-screen { fill: #18181b; }
+      .cooktop-container { aspect-ratio: 360 / 224; background: #18181b; border: 1px solid var(--divider-color); border-radius: 14px; position: relative; overflow: hidden; }
+      .cooktop-svg { width: 100%; height: 100%; display: block; }
+      .burner-group { cursor: pointer; }
+      .oven-container { min-height: 232px; background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 14px; display: flex; flex-direction: column; padding: 8px; gap: 8px; box-sizing: border-box; }
+      .oven-control-panel { height: 42px; background: var(--ha-card-background, #fff); border-radius: 10px; border: 1px solid var(--divider-color); padding: 2px 6px; box-sizing: border-box; }
       .oven { position: relative; border: 2px solid var(--divider-color); border-radius: 8px; background: var(--ha-card-background, #fff); display: flex; justify-content: center; align-items: center; cursor: pointer; }
       .upper-oven { flex: 0.7; }
       .lower-oven { flex: 1.3; }
@@ -3202,13 +3432,37 @@ class PassableApplianceCard extends LitElement {
       .popup-header-sub { font-size: 12px; color: var(--secondary-text-color); }
       .close-button { background: none; border: none; padding: 6px; border-radius: 50%; color: var(--primary-text-color); cursor: pointer; display: flex; }
 
-      .unit-switcher-row { display: flex; flex-wrap: wrap; gap: 6px; }
-      .unit-switch-pill {
-        padding: 4px 10px; border-radius: 999px; border: 1px solid var(--divider-color);
-        background: var(--secondary-background-color); color: var(--secondary-text-color);
-        font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+      .unit-select-bar { display: flex; align-items: center; gap: 8px; }
+      .passable-select-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 7px 9px; border-radius: 10px; background: var(--card-background-color, #fff);
+        border: 1px solid var(--divider-color); font-size: 12.5px;
       }
-      .unit-switch-pill.active { background: var(--primary-color, #3b82f6); border-color: var(--primary-color, #3b82f6); color: var(--text-primary-color, #fff); }
+      .select-row-label { display: flex; align-items: center; gap: 7px; font-weight: 600; min-width: 0; }
+      .select-row-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+      .select-wrap { position: relative; display: inline-flex; align-items: center; }
+      .select-wrap.full { flex: 1; width: 100%; }
+      .passable-select {
+        appearance: none; -webkit-appearance: none;
+        padding: 6px 28px 6px 10px; border-radius: 9px;
+        border: 1px solid var(--divider-color);
+        background: var(--secondary-background-color, rgba(128,128,128,0.1));
+        color: var(--primary-text-color); font-family: inherit; font-size: 12.5px; font-weight: 700;
+        cursor: pointer; max-width: 210px; text-overflow: ellipsis;
+      }
+      .select-wrap.full .passable-select { width: 100%; max-width: 100%; }
+      .select-chevron { position: absolute; right: 7px; pointer-events: none; color: var(--secondary-text-color); --mdc-icon-size: 16px; }
+
+      .preset-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      .laundry-cmd-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      .cmd-transport-btn {
+        display: flex; align-items: center; justify-content: center; gap: 5px;
+        padding: 8px 6px; border-radius: 10px; border: 1px solid var(--divider-color);
+        background: var(--card-background-color, #fff); color: var(--primary-text-color);
+        font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+      }
+      .cmd-transport-btn ha-icon { --mdc-icon-size: 16px; }
+      .cmd-transport-btn.active { background: var(--primary-color, #3b82f6); border-color: var(--primary-color, #3b82f6); color: var(--text-primary-color, #fff); }
 
       .popup-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: var(--secondary-background-color); padding: 4px; border-radius: 14px; gap: 4px; }
       .popup-tab {

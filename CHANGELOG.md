@@ -5,6 +5,16 @@ All notable changes to **Passable Appliance Card** will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-11-26
+
+### Fixed
+- **Freezer, Oven & K-Cup Setpoint Accuracy**: Fixed `_getTargetTemp()` rejecting `0°F` and negative freezer setpoints (`-6°F` to `0°F`), added dedicated `_getFridgeSetpoints()` (falling back cleanly to `sensor.*_temperature_setting_freezer`/`fridge`), and fixed `"Off"` ovens (`attributes.temperature = 0`) and idle Keurig K-Cup dispensers showing phantom `170°` / `90°` setpoints.
+- **Additional Parameter Consistency Fixes**: Fixed missing burner labels (`Element undefined`) when dashboard YAML omits `label`, displayed active oven setpoints alongside cavity temps on the main range doors & LCD, fixed summary `rings` mode oven selection, surfaced active Navien `RECIRCULATING` chip + `timer.water_heater_recirc_cooldown` + `sensor.water_heater_power`, initialized Smart Hose manual runtime from `manual_preset_runtime`, and removed fake `"35° / 0°"` unavailable fallback.
+- **Induction Cooktop Geometry & SyncBridge**: Rebuilt the Café `CHS950P2M1S1` stovetop as a proportional `<svg viewBox="0 0 360 224">` eliminating overlapping burners and aligning symmetric `SyncBurners` bridge lines cleanly tangent to the left elements, plus upgraded the 6-knob oven control bezel with live status readout.
+
+### Changed
+- **Passable Dropdown Controls**: Replaced cluttered pill rows with unified Passable dropdown selectors (`.passable-select-row`) for Oven Modes, Smart Hose Modes, Sound/Tone settings, and Multi-Appliance Hub switching, alongside 3-column quick temp presets and icon transport buttons for LG ThinQ Laundry.
+
 ## [2.3.0] - 2026-11-26
 
 ### Added
