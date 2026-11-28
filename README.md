@@ -18,13 +18,19 @@ A unified custom Lovelace card for Home Assistant aligned with the Passable card
 
 ### Consolidated Multi-Appliance Summary Hub (`display_mode: summary`)
 
+Supported `layout` options in `summary` mode:
+- `compact`: **Consolidated Hero** — single compact summary tile with an inline expandable quick-drawer (recommended for overview/wall-panel dashboards)
+- `strip`: Minimal single-line bar with inline quick-drawer
+- `active`: Shows compact tiles only for active/alerting appliances (or a single nominal bar when idle)
+- `tiles`: Compact 2-column appliance tile grid
+- `rows` (or `hero`): Full-width stacked appliance rows
+- `rings`: Compact circular progress gauges
+
 ```yaml
 type: custom:passable-appliance-card
 display_mode: summary
-layout: hero
+layout: compact
 show_header: false
-show_summary_strip: true
-show_footer_strip: true
 auto_discover_span: true
 appliances:
   - appliance_type: refrigerator

@@ -1,6 +1,6 @@
 /**
  * Passable Appliance Card
- * Version: 2.3.1
+ * Version: 2.4.0
  * GitHub: https://github.com/GBear09/passable-appliance-card
  *
  * Passable design-system universal appliance card for Home Assistant supporting:
@@ -10,12 +10,13 @@
  *  4. Navien NPE-240A2 Condensing Tankless Water Heater & HotButton Recirculation
  *  5. Orbit B-hyve HT25-0000 Smart Hose Timer
  *
- * Supports both rich graphical "full" mode (default) and compact "summary" mode (single
- * appliance or consolidated `appliances: [...]` multi-appliance hub) opening a responsive
- * 3-tab Command Center popup, with optional SPAN Panel live electrical telemetry.
+ * Supports both rich graphical "full" mode (default) and compact "summary" mode (with
+ * Consolidated Hero `compact`, `strip`, `active`, `tiles`, `rows`, and `rings` layouts
+ * plus an inline quick-drawer and responsive 3-tab Command Center popup), with optional
+ * SPAN Panel live electrical telemetry.
  */
 
-const CARD_VERSION = "2.3.1";
+const CARD_VERSION = "2.4.0";
 
 const LitElement = Object.getPrototypeOf(
   customElements.get("ha-panel-lovelace") ||
@@ -98,6 +99,8 @@ class PassableApplianceCard extends LitElement {
       _activeUnitIdx: { state: true },
       _activeTab: { state: true },
       _animDirection: { state: true },
+      _drawerMode: { state: true },
+      _drawerFilter: { state: true },
       _expandedTrays: { state: true },
       _showRecircSettings: { state: true },
       _showHoseSettings: { state: true },
@@ -120,10 +123,8 @@ class PassableApplianceCard extends LitElement {
     return {
       title: "Home Appliances",
       display_mode: "summary",
-      layout: "hero",
+      layout: "compact",
       show_header: false,
-      show_summary_strip: true,
-      show_footer_strip: true,
       auto_discover_span: true,
       appliances: [
         { appliance_type: "refrigerator", title: "Refrigerator" },
@@ -141,6 +142,8 @@ class PassableApplianceCard extends LitElement {
     this._activeUnitIdx = 0;
     this._activeTab = "primary";
     this._animDirection = "none";
+    this._drawerMode = null;
+    this._drawerFilter = "all";
     this._expandedTrays = {};
     this._showRecircSettings = false;
     this._showHoseSettings = false;
@@ -183,27 +186,52 @@ class PassableApplianceCard extends LitElement {
 
   setConfig(config) {
     if (!config) throw new Error("Invalid configuration");
+    const prevDrawerDefault = this.config?.default_expanded_drawer;
     const rawMode = String(config.display_mode || "full").toLowerCase();
     const displayMode = rawMode === "summary" ? "summary" : "full";
+    const validLayouts = ["compact", "strip", "active", "tiles", "rows", "hero", "rings"];
+    const rawLayout = String(config.layout || "").toLowerCase();
+    let layout;
+    if (rawLayout === "hero") {
+      layout = "rows";
+    } else if (validLayouts.includes(rawLayout)) {
+      layout = rawLayout;
+    } else {
+      layout = Array.isArray(config.appliances) && config.appliances.length > 1 ? "compact" : "rows";
+    }
     const defaultShowHeader = displayMode === "full";
+    const defaultStrips = !["compact", "strip"].includes(layout);
     this.config = {
       ...config,
       display_mode: displayMode,
-      layout: config.layout === "rings" ? "rings" : "hero",
+      layout,
       show_header:
         config.show_header !== undefined
           ? config.show_header !== false
           : defaultShowHeader,
-      show_summary_strip: config.show_summary_strip !== false,
-      show_footer_strip: config.show_footer_strip !== false,
+      show_summary_strip:
+        config.show_summary_strip !== undefined
+          ? Boolean(config.show_summary_strip)
+          : defaultStrips,
+      show_footer_strip:
+        config.show_footer_strip !== undefined
+          ? Boolean(config.show_footer_strip)
+          : defaultStrips,
       auto_discover_span: config.auto_discover_span !== false,
     };
+    if (config.default_expanded_drawer !== prevDrawerDefault) {
+      this._drawerMode = config.default_expanded_drawer ? String(config.default_expanded_drawer) : null;
+    }
     this._resolvedUnitsCache = null;
   }
 
   getCardSize() {
     const units = this._getNormalizedAppliances();
     if (this.config?.display_mode === "summary") {
+      const layout = this.config.layout;
+      if (layout === "compact" || layout === "strip") return 2;
+      if (layout === "rings" && units.length > 1) return 3;
+      if (layout === "tiles") return Math.max(3, Math.ceil(units.length / 2) * 2);
       return Math.max(3, units.length * 2 + 1);
     }
     return 8;
@@ -1358,43 +1386,93 @@ class PassableApplianceCard extends LitElement {
   }
 
   // =========================================================================
-  // COMPACT SUMMARY MODE (Single OR Multi-Appliance Hub)
+  // COMPACT SUMMARY MODE (Consolidated Hero, Strip, Active, Tiles, Rows, Rings)
   // =========================================================================
+
+  _computeHubMetrics(snaps) {
+    const activeSnaps = snaps.filter((s) => s.isActive);
+    const dangerSnaps = snaps.filter((s) => s.tone === "danger");
+    const warnSnaps = snaps.filter((s) => s.tone === "warning" || s.tone === "danger");
+    const heatSnaps = snaps.filter((s) => s.tone === "heat");
+    const totalWatts = snaps.reduce((sum, s) => sum + (s.span.watts || 0), 0);
+    const prioritySnap = dangerSnaps[0] || warnSnaps[0] || activeSnaps[0] || snaps[0];
+    const priorityIdx = Math.max(0, snaps.indexOf(prioritySnap));
+    const whSnap = snaps.find((s) => s.u.appliance_type === "water_heater" && s.u.recirc_switch);
+    return {
+      total: snaps.length,
+      activeSnaps,
+      dangerSnaps,
+      warnSnaps,
+      heatSnaps,
+      nominalCount: snaps.length - warnSnaps.length,
+      totalWatts,
+      priorityIdx,
+      whSnap,
+    };
+  }
+
+  _toggleDrawer(mode, ev = null) {
+    if (ev) ev.stopPropagation();
+    this._fireHaptic("light");
+    const key = mode === null ? null : String(mode);
+    if (this._drawerMode === key) {
+      this._drawerMode = null;
+    } else {
+      this._drawerMode = key;
+      if (key === "all") this._drawerFilter = "all";
+    }
+  }
+
+  _getTileToneClass(tone) {
+    if (tone === "heat") return "state-heat";
+    if (tone === "active") return "state-active";
+    if (tone === "warning") return "state-warning";
+    if (tone === "danger") return "state-danger";
+    return "";
+  }
 
   _renderSummaryMode(units) {
     const c = this.config;
     const snaps = units.map((u) => this._getUnitSnapshot(u));
-    const activeSnaps = snaps.filter((s) => s.isActive);
-    const warnSnaps = snaps.filter((s) => s.tone === "warning" || s.tone === "danger");
-    const totalWatts = snaps.reduce((sum, s) => sum + (s.span.watts || 0), 0);
+    const metrics = this._computeHubMetrics(snaps);
+    const layout = c.layout || "rows";
 
-    const tone = warnSnaps.length > 0 ? "warning" : activeSnaps.length > 0 ? "active" : "idle";
+    const tone =
+      metrics.dangerSnaps.length > 0
+        ? "danger"
+        : metrics.warnSnaps.length > 0
+        ? "warning"
+        : metrics.heatSnaps.length > 0
+        ? "heat"
+        : metrics.activeSnaps.length > 0
+        ? "active"
+        : "idle";
     const summaryLabel =
-      warnSnaps.length > 0
-        ? `${warnSnaps.length} Attention · ${warnSnaps[0].u.title}`
-        : activeSnaps.length > 0
-        ? `${activeSnaps.length} Active · ${activeSnaps.map((s) => s.u.title).slice(0, 2).join(", ")}`
+      metrics.warnSnaps.length > 0
+        ? `${metrics.warnSnaps.length} Attention · ${metrics.warnSnaps[0].u.title}`
+        : metrics.activeSnaps.length > 0
+        ? `${metrics.activeSnaps.length} Active · ${metrics.activeSnaps.map((s) => s.u.title).slice(0, 2).join(", ")}`
         : snaps.length > 1
         ? `All ${snaps.length} Appliances Nominal`
         : snaps[0].statusSub;
 
     return html`
       <div class="card-content ${c.show_header === false ? "no-header" : ""}">
-        ${c.show_summary_strip !== false
+        ${c.show_summary_strip !== false && layout !== "strip"
           ? html`
               <div
                 class="app-summary-strip ${tone}"
-                @click=${() => this._openModal(0, "primary")}
+                @click=${() => this._openModal(metrics.priorityIdx, "primary")}
                 title="Tap to open Appliance Command Center"
               >
                 <div class="summary-strip-left">
                   <span class="summary-status-dot ${tone}"></span>
                   <span class="summary-status-label">${summaryLabel}</span>
-                  ${totalWatts >= 10
+                  ${metrics.totalWatts >= 10
                     ? html`
                         <span class="summary-sep">•</span>
                         <span class="summary-meta-pill">
-                          ${totalWatts >= 1000 ? `${(totalWatts / 1000).toFixed(2)} kW` : `${Math.round(totalWatts)} W`}
+                          ${metrics.totalWatts >= 1000 ? `${(metrics.totalWatts / 1000).toFixed(2)} kW` : `${Math.round(metrics.totalWatts)} W`}
                         </span>
                       `
                     : ""}
@@ -1403,7 +1481,7 @@ class PassableApplianceCard extends LitElement {
                   <button
                     type="button"
                     class="strip-circle-btn"
-                    @click=${(e) => this._openModal(0, "primary", e)}
+                    @click=${(e) => this._openModal(metrics.priorityIdx, "primary", e)}
                     title="Open Appliance Command Center"
                   >
                     <ha-icon icon="mdi:tune-variant" style="--mdc-icon-size:15px;"></ha-icon>
@@ -1413,9 +1491,23 @@ class PassableApplianceCard extends LitElement {
             `
           : ""}
 
-        <div class="units-stack">
-          ${snaps.map((snap, idx) => this._renderSummaryTile(snap, idx))}
-        </div>
+        ${layout === "compact"
+          ? this._renderConsolidatedHero(snaps, metrics)
+          : layout === "strip"
+          ? this._renderMinimalStripCard(snaps, metrics)
+          : layout === "active"
+          ? this._renderActiveOnlyUnits(snaps, metrics)
+          : layout === "tiles"
+          ? this._renderTilesGrid(snaps)
+          : layout === "rings" && snaps.length > 1
+          ? this._renderRingsGrid(snaps)
+          : html`
+              <div class="units-stack">
+                ${snaps.map((snap, idx) => this._renderSummaryTile(snap, idx))}
+              </div>
+            `}
+
+        ${this._renderInlineDrawer(snaps, metrics)}
 
         ${c.show_footer_strip !== false
           ? html`
@@ -1460,6 +1552,585 @@ class PassableApplianceCard extends LitElement {
               </div>
             `
           : ""}
+      </div>
+    `;
+  }
+
+  _renderConsolidatedHero(snaps, metrics) {
+    const prioritySnap = snaps[metrics.priorityIdx] || snaps[0];
+    const tone =
+      metrics.dangerSnaps.length > 0
+        ? "danger"
+        : metrics.warnSnaps.length > 0
+        ? "warning"
+        : metrics.heatSnaps.length > 0
+        ? "heat"
+        : metrics.activeSnaps.length > 0
+        ? "active"
+        : "idle";
+    const tileCls = this._getTileToneClass(tone);
+    const heroIcon =
+      metrics.warnSnaps.length > 0
+        ? APPLIANCE_META[metrics.warnSnaps[0].u.appliance_type]?.icon || "mdi:alert-outline"
+        : metrics.activeSnaps.length > 0
+        ? APPLIANCE_META[metrics.activeSnaps[0].u.appliance_type]?.icon || "mdi:fridge-outline"
+        : this.config?.icon || "mdi:fridge-outline";
+
+    let priorityChip = "";
+    const chipCandidate =
+      metrics.warnSnaps[0]?.chips?.[0] ||
+      metrics.activeSnaps[0]?.chips?.[0] ||
+      snaps.find((s) => s.chips.length > 0)?.chips?.[0] ||
+      null;
+    if (chipCandidate) {
+      priorityChip = html`<span class="zone-inline-chip ${chipCandidate.cls}">${chipCandidate.label}</span>`;
+    }
+
+    const fridgeSnap = snaps.find((s) => s.u.appliance_type === "refrigerator");
+    let statusText = `All ${snaps.length} nominal`;
+    if (metrics.warnSnaps.length > 0) {
+      const w0 = metrics.warnSnaps[0];
+      statusText = `${w0.u.title} · ${w0.statusSub}`;
+    } else if (metrics.activeSnaps.length === 1) {
+      const a0 = metrics.activeSnaps[0];
+      statusText = `${a0.u.title} · ${a0.statusSub}`;
+    } else if (metrics.activeSnaps.length > 1) {
+      statusText = `${metrics.activeSnaps.length} active · ${metrics.activeSnaps.map((s) => s.u.title).slice(0, 2).join(", ")}`;
+    } else if (fridgeSnap && !fridgeSnap.primaryVal.startsWith("--")) {
+      statusText = `All nominal · ${fridgeSnap.primaryVal}`;
+    }
+
+    const laundrySnap = metrics.activeSnaps.find((s) => s.u.appliance_type === "laundry" && s.primaryVal !== "Idle");
+    const rangeSnap = metrics.activeSnaps.find((s) => s.u.appliance_type === "induction_range");
+    const whActiveSnap = metrics.activeSnaps.find((s) => s.u.appliance_type === "water_heater");
+    const hoseActiveSnap = metrics.activeSnaps.find((s) => s.u.appliance_type === "smart_hose_timer");
+
+    let rightVal = `${metrics.nominalCount}/${metrics.total}`;
+    let rightSub = "Nominal";
+    if (laundrySnap) {
+      rightVal = laundrySnap.primaryVal;
+      rightSub = laundrySnap.primarySub;
+    } else if (rangeSnap) {
+      rightVal = rangeSnap.primaryVal;
+      rightSub = rangeSnap.primarySub;
+    } else if (whActiveSnap) {
+      const recircOn = whActiveSnap.u.recirc_switch && this._isEntityOn(whActiveSnap.u.recirc_switch);
+      rightVal = recircOn ? "Recirc" : whActiveSnap.primaryVal;
+      rightSub = recircOn ? "HotButton" : whActiveSnap.primarySub;
+    } else if (hoseActiveSnap) {
+      rightVal = hoseActiveSnap.primaryVal;
+      rightSub = "Watering";
+    } else if (metrics.warnSnaps.length > 0) {
+      rightVal = `${metrics.warnSnaps.length} Alert${metrics.warnSnaps.length > 1 ? "s" : ""}`;
+      rightSub = "Attention";
+    } else if (metrics.totalWatts >= 50) {
+      rightVal = metrics.totalWatts >= 1000 ? `${(metrics.totalWatts / 1000).toFixed(2)} kW` : `${Math.round(metrics.totalWatts)} W`;
+      rightSub = "Total Draw";
+    }
+
+    let hairlinePct = 0;
+    let hairlineColor = "#22c55e";
+    const activeWithProg = metrics.activeSnaps.find((s) => s.progressPct !== null);
+    if (activeWithProg) {
+      hairlinePct = activeWithProg.progressPct;
+      hairlineColor = activeWithProg.tone === "heat" ? "#f97316" : "#0284c7";
+    } else if (metrics.dangerSnaps.length > 0) {
+      hairlinePct = 100;
+      hairlineColor = "#ef4444";
+    } else if (metrics.warnSnaps.length > 0) {
+      hairlinePct = 100;
+      hairlineColor = "#f59e0b";
+    } else if (metrics.totalWatts >= 50) {
+      hairlinePct = Math.max(8, Math.min(100, Math.round((metrics.totalWatts / 4500) * 100)));
+      hairlineColor = metrics.heatSnaps.length > 0 ? "#f97316" : "#0284c7";
+    }
+
+    const whUnit = metrics.whSnap?.u;
+    const recircOn = whUnit?.recirc_switch ? this._isEntityOn(whUnit.recirc_switch) : false;
+    const isDrawerOpen = this._drawerMode !== null;
+
+    return html`
+      <div
+        class="unit-tile-card hero-summary ${tileCls} ${isDrawerOpen ? "selected" : ""}"
+        @click=${() => this._openModal(metrics.priorityIdx, "primary")}
+        title="Tap to open Appliance Command Center"
+      >
+        <div class="hero-zone-header">
+          <div class="hero-zone-identity">
+            <div class="device-icon-wrap ${tileCls}">
+              <ha-icon icon="${heroIcon}" style="--mdc-icon-size:21px;"></ha-icon>
+            </div>
+            <div class="hero-zone-title-wrap">
+              <div class="hero-zone-title-row">
+                <h3 class="hero-zone-title">${this.config?.title || "Home Appliances"}</h3>
+                ${priorityChip}
+              </div>
+              <div class="hero-zone-subtitle">
+                <span class="sub-truncate">${statusText}</span>
+                <span class="summary-sep">•</span>
+                <button
+                  type="button"
+                  class="hero-inline-expand-btn ${isDrawerOpen ? "open" : ""}"
+                  @click=${(e) => this._toggleDrawer("all", e)}
+                  title="${isDrawerOpen ? "Collapse appliances" : "Expand all appliances"}"
+                >
+                  <span>${snaps.length} ${snaps.length === 1 ? "Appliance" : "Appliances"}</span>
+                  <ha-icon
+                    icon="${isDrawerOpen ? "mdi:chevron-up" : "mdi:chevron-down"}"
+                    style="--mdc-icon-size:14px;"
+                  ></ha-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-zone-primary" @click=${(e) => e.stopPropagation()}>
+            <div class="hero-primary-stack">
+              <div class="hero-primary-val ${tileCls}">${rightVal}</div>
+              <div class="hero-primary-sub">${rightSub}</div>
+            </div>
+
+            ${whUnit?.recirc_switch
+              ? html`
+                  <button
+                    type="button"
+                    class="icon-circle-btn ${recircOn ? "active" : ""}"
+                    @click=${(e) => this._toggleEntity(whUnit.recirc_switch, e)}
+                    title="${recircOn ? "Stop HotButton Recirculation" : "Start HotButton Recirculation"}"
+                  >
+                    <ha-icon icon="mdi:refresh" style="--mdc-icon-size:15px;"></ha-icon>
+                  </button>
+                `
+              : ""}
+
+            <button
+              type="button"
+              class="icon-circle-btn"
+              @click=${(e) => this._openModal(metrics.priorityIdx, "primary", e)}
+              title="Open ${prioritySnap?.u?.title || "Appliance"} Command Center"
+            >
+              <ha-icon icon="mdi:tune-variant" style="--mdc-icon-size:15px;"></ha-icon>
+            </button>
+          </div>
+        </div>
+
+        ${hairlinePct > 0
+          ? html`
+              <div class="tile-hairline">
+                <div class="tile-hairline-fill" style="width:${hairlinePct}%; background:${hairlineColor};"></div>
+              </div>
+            `
+          : ""}
+      </div>
+    `;
+  }
+
+  _renderMinimalStripCard(snaps, metrics) {
+    const tone =
+      metrics.dangerSnaps.length > 0
+        ? "danger"
+        : metrics.warnSnaps.length > 0
+        ? "warning"
+        : metrics.heatSnaps.length > 0
+        ? "heat"
+        : metrics.activeSnaps.length > 0
+        ? "active"
+        : "idle";
+    const isDrawerOpen = this._drawerMode !== null;
+    const pillLabel =
+      metrics.warnSnaps.length > 0
+        ? `${metrics.warnSnaps.length} Attention`
+        : metrics.activeSnaps.length > 0
+        ? `${metrics.activeSnaps.length} Active`
+        : `All ${snaps.length} Nominal`;
+    const whUnit = metrics.whSnap?.u;
+    const recircOn = whUnit?.recirc_switch ? this._isEntityOn(whUnit.recirc_switch) : false;
+
+    return html`
+      <div class="app-summary-strip minimal-strip ${tone}">
+        <div class="summary-strip-left">
+          <span class="summary-status-dot ${tone}"></span>
+          ${this.config?.title
+            ? html`<span class="strip-brand-title">${this.config.title}</span>`
+            : ""}
+          <button
+            type="button"
+            class="strip-active-pill ${isDrawerOpen ? "drawer-open" : ""} ${tone}"
+            @click=${(e) => this._toggleDrawer("all", e)}
+            title="${isDrawerOpen ? "Collapse appliances" : "Expand all appliances"}"
+          >
+            ${pillLabel} ${isDrawerOpen ? "▴" : "▾"}
+          </button>
+          ${metrics.totalWatts >= 50
+            ? html`
+                <span class="summary-sep">•</span>
+                <span class="summary-meta-pill">
+                  ${metrics.totalWatts >= 1000 ? `${(metrics.totalWatts / 1000).toFixed(2)} kW` : `${Math.round(metrics.totalWatts)} W`}
+                </span>
+              `
+            : ""}
+        </div>
+
+        <div class="summary-strip-right">
+          ${whUnit?.recirc_switch
+            ? html`
+                <button
+                  type="button"
+                  class="icon-circle-btn ${recircOn ? "active" : ""}"
+                  @click=${(e) => this._toggleEntity(whUnit.recirc_switch, e)}
+                  title="${recircOn ? "Stop Recirculation" : "HotButton Recirculation"}"
+                >
+                  <ha-icon icon="mdi:refresh" style="--mdc-icon-size:15px;"></ha-icon>
+                </button>
+              `
+            : ""}
+          <button
+            type="button"
+            class="icon-circle-btn"
+            @click=${(e) => this._openModal(metrics.priorityIdx, "primary", e)}
+            title="Open Appliance Command Center"
+          >
+            <ha-icon icon="mdi:tune-variant" style="--mdc-icon-size:15px;"></ha-icon>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderActiveOnlyUnits(snaps, metrics) {
+    const activeItems = snaps
+      .map((snap, idx) => ({ snap, idx }))
+      .filter(({ snap }) => snap.isActive || snap.tone === "warning" || snap.tone === "danger");
+
+    if (activeItems.length > 0) {
+      return html`
+        <div class="units-grid-2">
+          ${activeItems.map(({ snap, idx }, i) => {
+            const spanFull = activeItems.length % 2 === 1 && i === activeItems.length - 1;
+            return this._renderCompactGridTile(snap, idx, spanFull);
+          })}
+        </div>
+      `;
+    }
+
+    return html`
+      <div
+        class="active-idle-row"
+        @click=${(e) => this._toggleDrawer("all", e)}
+        title="Tap to expand all appliances"
+      >
+        <span>All ${snaps.length} appliances nominal${metrics.totalWatts >= 50 ? ` · ${Math.round(metrics.totalWatts)} W` : ""} — tap to expand</span>
+        <ha-icon icon="${this._drawerMode === "all" ? "mdi:chevron-up" : "mdi:chevron-down"}" style="--mdc-icon-size:15px;"></ha-icon>
+      </div>
+    `;
+  }
+
+  _renderTilesGrid(snaps) {
+    return html`
+      <div class="units-grid-2">
+        ${snaps.map((snap, idx) => {
+          const spanFull = snaps.length > 1 && snaps.length % 2 === 1 && idx === snaps.length - 1;
+          return this._renderCompactGridTile(snap, idx, spanFull);
+        })}
+      </div>
+    `;
+  }
+
+  _renderCompactGridTile(snap, idx, spanFull = false) {
+    const { u } = snap;
+    const tileCls = this._getTileToneClass(snap.tone);
+    const isSelected = this._drawerMode === String(idx);
+    return html`
+      <div
+        class="unit-tile-card compact-tile ${tileCls} ${spanFull ? "span-2" : ""} ${isSelected ? "selected" : ""}"
+        @click=${() => this._openModal(idx, "primary")}
+        title="Tap to open ${u.title} Controls"
+      >
+        <div class="compact-tile-main">
+          <div class="compact-tile-id">
+            <div class="model-thumb-box mini">
+              ${this._renderApplianceThumbSvg(u.appliance_type, snap, 26)}
+            </div>
+            <div class="compact-tile-text">
+              <div class="compact-tile-title">${u.title}</div>
+              <div class="compact-tile-sub">${snap.statusSub}</div>
+            </div>
+          </div>
+          <div class="compact-tile-right">
+            <span class="compact-tile-val">${snap.primaryVal}</span>
+            <button
+              type="button"
+              class="icon-mini-btn ${isSelected ? "active" : ""}"
+              @click=${(e) => this._toggleDrawer(String(idx), e)}
+              title="Quick telemetry drawer"
+            >
+              <ha-icon icon="${isSelected ? "mdi:chevron-up" : "mdi:chevron-down"}" style="--mdc-icon-size:14px;"></ha-icon>
+            </button>
+          </div>
+        </div>
+        ${snap.progressPct !== null
+          ? html`
+              <div class="tile-hairline">
+                <div class="tile-hairline-fill" style="width:${snap.progressPct}%; background:${snap.tone === "heat" ? "#f97316" : "#0284c7"};"></div>
+              </div>
+            `
+          : ""}
+      </div>
+    `;
+  }
+
+  _renderRingsGrid(snaps) {
+    const r = 16;
+    const c = 2 * Math.PI * r;
+    const cols = Math.min(5, Math.max(1, snaps.length));
+    return html`
+      <div class="appliance-rings-grid" style="grid-template-columns:repeat(${cols}, minmax(0, 1fr));">
+        ${snaps.map((snap, idx) => {
+          const ring = snap.ringA || snap.ringB || {
+            pct: snap.isActive ? 100 : 0,
+            val: snap.primaryVal,
+            lbl: snap.primarySub,
+            color: snap.tone === "heat" ? "#f97316" : snap.tone === "danger" ? "#ef4444" : "#0284c7",
+          };
+          const clamped = Math.max(0, Math.min(100, ring.pct || 0));
+          const dash = (clamped / 100) * c;
+          const isSelected = this._drawerMode === String(idx);
+          return html`
+            <button
+              type="button"
+              class="ring-tile-btn ${isSelected ? "selected" : ""}"
+              @click=${(e) => this._toggleDrawer(String(idx), e)}
+              title="Tap for ${snap.u.title} quick drawer"
+            >
+              <div class="ring-wrap">
+                ${svg`
+                  <svg class="ring-svg" viewBox="0 0 40 40">
+                    <circle cx="20" cy="20" r="${r}" fill="none" stroke="rgba(148,163,184,0.18)" stroke-width="3.2"></circle>
+                    <circle cx="20" cy="20" r="${r}" fill="none" stroke="${ring.color}" stroke-width="3.2" stroke-linecap="round" stroke-opacity="${clamped > 0 ? 1 : 0}" stroke-dasharray="${dash.toFixed(1)} ${c.toFixed(1)}"></circle>
+                  </svg>
+                `}
+                <span class="ring-val">${ring.val}</span>
+              </div>
+              <span class="ring-name">${snap.u.title}</span>
+              <span class="ring-sub">${ring.lbl}</span>
+            </button>
+          `;
+        })}
+      </div>
+    `;
+  }
+
+  _renderDrawerQuickChip(snap, idx) {
+    const u = snap.u;
+    if (u.appliance_type === "water_heater" && u.recirc_switch) {
+      const on = this._isEntityOn(u.recirc_switch);
+      return html`
+        <button
+          type="button"
+          class="quick-chip ${on ? "sky" : ""}"
+          @click=${(e) => this._toggleEntity(u.recirc_switch, e)}
+        >
+          ${on ? "Stop Recirc" : "HotButton"}
+        </button>
+      `;
+    }
+    if (u.appliance_type === "smart_hose_timer" && u.valve_entity) {
+      const open = this._isEntityOn(u.valve_entity);
+      return html`
+        <button
+          type="button"
+          class="quick-chip ${open ? "danger" : "sky"}"
+          @click=${(e) => {
+            e.stopPropagation();
+            this._toggleHoseWatering(u);
+          }}
+        >
+          ${open ? "Stop" : `Water ${this._manualRuntime}m`}
+        </button>
+      `;
+    }
+    if (u.appliance_type === "refrigerator" && u.hot_water_cancel_switch) {
+      return html`
+        <button
+          type="button"
+          class="quick-chip amber"
+          @click=${(e) => this._openModal(idx, "secondary", e)}
+        >
+          K-Cup
+        </button>
+      `;
+    }
+    if (u.appliance_type === "induction_range" && u.oven?.upper_light_entity) {
+      const lightOn = String(this._getEntity(u.oven.upper_light_entity).state).toLowerCase() !== "off"
+        && this._getEntity(u.oven.upper_light_entity).state !== "unavailable";
+      return html`
+        <button
+          type="button"
+          class="quick-chip ${lightOn ? "amber" : ""}"
+          @click=${(e) => this._toggleApplianceLight(u.oven.upper_light_entity, e)}
+        >
+          Light
+        </button>
+      `;
+    }
+    if (u.appliance_type === "laundry") {
+      return html`
+        <button
+          type="button"
+          class="quick-chip ${snap.isActive ? "sky" : ""}"
+          @click=${(e) => this._openModal(idx, "primary", e)}
+        >
+          Controls
+        </button>
+      `;
+    }
+    return "";
+  }
+
+  _renderInlineDrawer(snaps, metrics) {
+    if (!this._drawerMode) return "";
+
+    if (this._drawerMode === "all") {
+      const indexed = snaps.map((snap, idx) => ({ snap, idx })).filter(({ snap }) => {
+        if (this._drawerFilter === "active") return snap.isActive;
+        if (this._drawerFilter === "alerts") return snap.tone === "warning" || snap.tone === "danger";
+        return true;
+      });
+      return html`
+        <div class="appliance-inline-drawer">
+          <div class="drawer-header">
+            <div class="drawer-title-group">
+              <span class="drawer-title">All Appliances (${indexed.length})</span>
+              ${[
+                { id: "all", label: "All" },
+                { id: "active", label: "Active" },
+                { id: "alerts", label: "Alerts" },
+              ].map(
+                (f) => html`
+                  <button
+                    type="button"
+                    class="drawer-filter-btn ${this._drawerFilter === f.id ? "active" : ""}"
+                    @click=${() => (this._drawerFilter = f.id)}
+                  >
+                    ${f.label}
+                  </button>
+                `
+              )}
+            </div>
+            <div class="drawer-actions">
+              <button
+                type="button"
+                class="drawer-manage-btn"
+                @click=${(e) => this._openModal(metrics.priorityIdx, "primary", e)}
+              >
+                <span>Command Center</span>
+                <ha-icon icon="mdi:open-in-new" style="--mdc-icon-size:13px;"></ha-icon>
+              </button>
+              <button
+                type="button"
+                class="drawer-close-btn"
+                @click=${() => (this._drawerMode = null)}
+                title="Close drawer"
+              >
+                <ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="drawer-list thin-scroll">
+            ${indexed.length === 0
+              ? html`<div class="drawer-empty">No matching appliances in this filter.</div>`
+              : indexed.map(({ snap, idx }) => {
+                  const tileCls = this._getTileToneClass(snap.tone);
+                  return html`
+                    <div class="drawer-device-row ${tileCls}">
+                      <div
+                        class="drawer-dev-left clickable"
+                        @click=${() => (this._drawerMode = String(idx))}
+                        title="Tap for ${snap.u.title} telemetry & quick actions"
+                      >
+                        <div class="model-thumb-box mini">
+                          ${this._renderApplianceThumbSvg(snap.u.appliance_type, snap, 26)}
+                        </div>
+                        <div class="drawer-dev-text">
+                          <div class="drawer-dev-name">
+                            <span>${snap.u.title}</span>
+                            ${snap.chips[0] ? html`<span class="zone-inline-chip ${snap.chips[0].cls}">${snap.chips[0].label}</span>` : ""}
+                          </div>
+                          <div class="drawer-dev-sub">
+                            ${snap.primaryVal} · ${snap.statusSub}${snap.span.powerText ? ` · ${snap.span.powerText}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                      <div class="drawer-dev-actions">
+                        ${this._renderDrawerQuickChip(snap, idx)}
+                        <button
+                          type="button"
+                          class="icon-mini-btn"
+                          @click=${(e) => this._openModal(idx, "primary", e)}
+                          title="Open ${snap.u.title} Command Center"
+                        >
+                          <ha-icon icon="mdi:tune-variant" style="--mdc-icon-size:14px;"></ha-icon>
+                        </button>
+                      </div>
+                    </div>
+                  `;
+                })}
+          </div>
+        </div>
+      `;
+    }
+
+    const idx = parseInt(this._drawerMode, 10);
+    const snap = Number.isFinite(idx) ? snaps[idx] : null;
+    if (!snap) return "";
+
+    return html`
+      <div class="appliance-inline-drawer">
+        <div class="drawer-header">
+          <div class="drawer-title-group">
+            <div class="model-thumb-box mini">
+              ${this._renderApplianceThumbSvg(snap.u.appliance_type, snap, 26)}
+            </div>
+            <div>
+              <div class="drawer-title">${snap.u.title}</div>
+              <div class="drawer-sub">${snap.primaryVal} · ${snap.primarySub}</div>
+            </div>
+          </div>
+          <div class="drawer-actions">
+            ${snaps.length > 1
+              ? html`
+                  <button
+                    type="button"
+                    class="drawer-filter-btn"
+                    @click=${() => (this._drawerMode = "all")}
+                    title="Back to all appliances"
+                  >
+                    ← All
+                  </button>
+                `
+              : ""}
+            ${this._renderDrawerQuickChip(snap, idx)}
+            <button
+              type="button"
+              class="drawer-manage-btn"
+              @click=${(e) => this._openModal(idx, "primary", e)}
+            >
+              <span>Controls</span>
+              <ha-icon icon="mdi:open-in-new" style="--mdc-icon-size:13px;"></ha-icon>
+            </button>
+            <button
+              type="button"
+              class="drawer-close-btn"
+              @click=${() => (this._drawerMode = null)}
+              title="Collapse drawer"
+            >
+              <ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon>
+            </button>
+          </div>
+        </div>
+
+        ${this._renderSummaryTray(snap.u, snap.span)}
       </div>
     `;
   }
@@ -3181,32 +3852,179 @@ class PassableApplianceCard extends LitElement {
         cursor: pointer; box-sizing: border-box;
       }
       .app-summary-strip.active { background: rgba(14, 165, 233, 0.09); border-color: rgba(14, 165, 233, 0.34); }
+      .app-summary-strip.heat { background: rgba(249, 115, 22, 0.09); border-color: rgba(249, 115, 22, 0.36); }
       .app-summary-strip.warning { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.36); }
+      .app-summary-strip.danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.42); }
       .summary-strip-left { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
       .summary-strip-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
       .summary-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #22c55e; }
       .summary-status-dot.active { background: #0284c7; }
+      .summary-status-dot.heat { background: #f97316; }
       .summary-status-dot.warning { background: #f59e0b; }
+      .summary-status-dot.danger { background: #ef4444; }
       .summary-status-label { font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+      .strip-brand-title { font-size: 13px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; }
+      .strip-active-pill {
+        padding: 2px 9px; border-radius: 999px; font-family: inherit; font-size: 12px; font-weight: 700;
+        border: 1px solid var(--divider-color, rgba(128,128,128,0.22));
+        background: var(--card-background-color, rgba(128,128,128,0.1)); color: var(--primary-text-color); cursor: pointer;
+      }
+      .strip-active-pill.heat { background: rgba(249,115,22,0.14); border-color: rgba(249,115,22,0.36); color: #ea580c; }
+      .strip-active-pill.active { background: rgba(14,165,233,0.14); border-color: rgba(14,165,233,0.36); color: #0284c7; }
+      .strip-active-pill.warning { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.4); color: #d97706; }
+      .strip-active-pill.danger { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.4); color: #dc2626; }
+      .strip-active-pill.drawer-open { box-shadow: 0 0 0 1px var(--primary-color, #0284c7); }
       .summary-sep { opacity: 0.4; font-size: 12px; }
       .summary-meta-pill { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
-      .strip-circle-btn {
+      .strip-circle-btn, .icon-circle-btn {
         width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
         background: var(--card-background-color, #fff); border: 1px solid var(--divider-color); color: var(--primary-text-color);
         cursor: pointer; padding: 0;
       }
+      .icon-circle-btn.active { color: #0284c7; border-color: rgba(14,165,233,0.45); background: rgba(14,165,233,0.14); }
 
       .units-stack { display: flex; flex-direction: column; gap: 8px; }
+      .units-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      @container (max-width: 340px) { .units-grid-2 { grid-template-columns: 1fr; } }
       .unit-tile-card {
         position: relative; overflow: hidden;
         background: var(--secondary-background-color, rgba(128, 128, 128, 0.08));
         border: 1px solid var(--divider-color, rgba(128, 128, 128, 0.16));
         border-radius: 14px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; cursor: pointer;
       }
+      .unit-tile-card.compact-tile { padding: 8px 10px 10px; }
+      .unit-tile-card.compact-tile.span-2 { grid-column: span 2; }
+      @container (max-width: 340px) { .unit-tile-card.compact-tile.span-2 { grid-column: span 1; } }
+      .unit-tile-card.hero-summary { padding: 10px 12px 12px; }
+      .unit-tile-card.selected { border-color: var(--primary-color, #0284c7); box-shadow: 0 0 0 1px var(--primary-color, #0284c7); }
       .unit-tile-card.state-active { background: rgba(14, 165, 233, 0.09); border-color: rgba(14, 165, 233, 0.4); }
       .unit-tile-card.state-heat { background: rgba(249, 115, 22, 0.09); border-color: rgba(249, 115, 22, 0.4); }
       .unit-tile-card.state-warning { background: rgba(245, 158, 11, 0.09); border-color: rgba(245, 158, 11, 0.44); }
       .unit-tile-card.state-danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.5); }
+
+      /* CONSOLIDATED HERO LAYOUT */
+      .hero-zone-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; }
+      .hero-zone-identity { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
+      .device-icon-wrap {
+        width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        background: rgba(128,128,128,0.14); color: var(--secondary-text-color); border: 1px solid var(--divider-color, rgba(128,128,128,0.16));
+      }
+      .device-icon-wrap.state-active { background: rgba(14,165,233,0.18); color: #0284c7; border-color: rgba(14,165,233,0.42); }
+      .device-icon-wrap.state-heat { background: rgba(249,115,22,0.18); color: #ea580c; border-color: rgba(249,115,22,0.42); }
+      .device-icon-wrap.state-warning { background: rgba(245,158,11,0.2); color: #d97706; border-color: rgba(245,158,11,0.45); }
+      .device-icon-wrap.state-danger { background: rgba(239,68,68,0.2); color: #dc2626; border-color: rgba(239,68,68,0.45); }
+      .hero-zone-title-wrap { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; overflow: hidden; }
+      .hero-zone-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+      .hero-zone-title {
+        font-size: 16px; font-weight: 700; color: var(--primary-text-color); margin: 0;
+        line-height: 1.2; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .hero-zone-subtitle {
+        display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+        color: var(--secondary-text-color); min-width: 0; line-height: 1.25;
+      }
+      .hero-inline-expand-btn {
+        display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px;
+        background: var(--card-background-color, rgba(128,128,128,0.12));
+        border: 1px solid var(--divider-color, rgba(128,128,128,0.22));
+        color: var(--primary-text-color); font-family: inherit; font-size: 11.5px; font-weight: 700;
+        cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      }
+      .hero-inline-expand-btn.open, .hero-inline-expand-btn:hover {
+        border-color: var(--primary-color, #0284c7); background: rgba(14,165,233,0.12);
+      }
+      .hero-zone-primary { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+      .hero-primary-stack { display: flex; flex-direction: column; align-items: flex-end; margin-right: 2px; font-variant-numeric: tabular-nums; }
+      .hero-primary-val { font-size: 18px; font-weight: 800; line-height: 1.05; color: var(--primary-text-color); }
+      .hero-primary-val.state-active { color: #0284c7; }
+      .hero-primary-val.state-heat { color: #ea580c; }
+      .hero-primary-val.state-warning { color: #d97706; }
+      .hero-primary-val.state-danger { color: #dc2626; }
+      .hero-primary-sub { font-size: 11px; font-weight: 700; color: var(--secondary-text-color); }
+
+      /* COMPACT 2-COL TILES, ACTIVE IDLE, MULTI-RINGS */
+      .compact-tile-main { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+      .compact-tile-id { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+      .compact-tile-text { min-width: 0; flex: 1; }
+      .compact-tile-title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .compact-tile-sub { font-size: 11px; font-weight: 600; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .compact-tile-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+      .compact-tile-val { font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+      .model-thumb-box.mini { width: 32px; height: 32px; border-radius: 9px; }
+
+      .active-idle-row {
+        display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-radius: 12px;
+        background: var(--secondary-background-color, rgba(128,128,128,0.08));
+        border: 1px solid var(--divider-color, rgba(128,128,128,0.16));
+        font-size: 12.5px; font-weight: 600; color: var(--secondary-text-color); cursor: pointer;
+      }
+      .appliance-rings-grid { display: grid; gap: 4px; }
+      .ring-tile-btn {
+        display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px;
+        border-radius: 11px; background: transparent; border: 1px solid transparent; font-family: inherit; cursor: pointer;
+      }
+      .ring-tile-btn.selected { background: var(--secondary-background-color, rgba(128,128,128,0.12)); border-color: var(--primary-color, #0284c7); }
+      .ring-wrap { position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+      .ring-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+      .ring-val { position: absolute; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--primary-text-color); }
+      .ring-name { font-size: 11.5px; font-weight: 700; color: var(--primary-text-color); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ring-sub { font-size: 10.5px; color: var(--secondary-text-color); }
+
+      /* INLINE QUICK DRAWER */
+      @keyframes pacSlideDown { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+      .appliance-inline-drawer {
+        border-top: 1px dashed var(--divider-color, rgba(128,128,128,0.25)); padding-top: 8px;
+        display: flex; flex-direction: column; gap: 8px; animation: pacSlideDown 0.18s ease-out forwards;
+      }
+      .drawer-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+      .drawer-title-group { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+      .drawer-title { font-size: 13px; font-weight: 700; }
+      .drawer-sub { font-size: 11.5px; color: var(--secondary-text-color); }
+      .drawer-actions { display: flex; align-items: center; gap: 5px; }
+      .drawer-filter-btn {
+        display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 6px;
+        border: 1px solid var(--divider-color, rgba(128,128,128,0.24)); background: transparent;
+        color: var(--secondary-text-color); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;
+      }
+      .drawer-filter-btn.active { border-color: rgba(14,165,233,0.45); background: rgba(14,165,233,0.14); color: #0284c7; }
+      .drawer-manage-btn {
+        display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+        border: 1px solid var(--divider-color, rgba(128,128,128,0.22));
+        background: var(--secondary-background-color, rgba(128,128,128,0.1));
+        color: var(--primary-text-color); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;
+      }
+      .drawer-close-btn { background: none; border: none; padding: 2px; color: var(--secondary-text-color); cursor: pointer; display: inline-flex; }
+      .drawer-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+      .drawer-device-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px;
+        border-radius: 10px; border: 1px solid var(--divider-color, rgba(128,128,128,0.16));
+        background: var(--card-background-color, rgba(128,128,128,0.06));
+      }
+      .drawer-device-row.state-active { border-color: rgba(14,165,233,0.36); background: rgba(14,165,233,0.08); }
+      .drawer-device-row.state-heat { border-color: rgba(249,115,22,0.36); background: rgba(249,115,22,0.08); }
+      .drawer-device-row.state-warning { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.08); }
+      .drawer-device-row.state-danger { border-color: rgba(239,68,68,0.42); background: rgba(239,68,68,0.09); }
+      .drawer-dev-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+      .drawer-dev-left.clickable { cursor: pointer; }
+      .drawer-dev-text { min-width: 0; flex: 1; }
+      .drawer-dev-name { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: 12.5px; font-weight: 700; }
+      .drawer-dev-sub { font-size: 11px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .drawer-dev-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+      .drawer-empty { padding: 12px 8px; text-align: center; font-size: 12.5px; color: var(--secondary-text-color); }
+      .quick-chip {
+        padding: 4px 10px; border-radius: 999px; font-family: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer;
+        border: 1px solid var(--divider-color, rgba(128,128,128,0.24));
+        background: var(--card-background-color, rgba(128,128,128,0.08)); color: var(--primary-text-color);
+      }
+      .quick-chip.sky { background: rgba(14,165,233,0.14); border-color: rgba(14,165,233,0.38); color: #0284c7; }
+      .quick-chip.amber { background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.38); color: #d97706; }
+      .quick-chip.danger { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.38); color: #dc2626; }
+      .icon-mini-btn {
+        width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--divider-color, rgba(128,128,128,0.22));
+        background: var(--card-background-color, rgba(128,128,128,0.08)); color: var(--secondary-text-color); cursor: pointer; padding: 0;
+      }
+      .icon-mini-btn.active { color: #0284c7; border-color: rgba(14,165,233,0.45); background: rgba(14,165,233,0.14); }
 
       .unit-tile-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
       .unit-tile-identity { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
@@ -3573,6 +4391,15 @@ class PassableApplianceCardEditor extends LitElement {
     if (!this.hass || !this.config) return html``;
     const c = this.config;
     const displayMode = c.display_mode === "summary" ? "summary" : "full";
+    const rawLayout = String(c.layout || "").toLowerCase();
+    const layout = rawLayout === "hero"
+      ? "rows"
+      : ["compact", "strip", "active", "tiles", "rows", "rings"].includes(rawLayout)
+      ? rawLayout
+      : Array.isArray(c.appliances) && c.appliances.length > 1
+      ? "compact"
+      : "rows";
+    const defaultStrips = !["compact", "strip"].includes(layout);
     const showHeaderChecked =
       c.show_header !== undefined ? c.show_header !== false : displayMode === "full";
     const hubList = Array.isArray(c.appliances) ? c.appliances : [];
@@ -3595,14 +4422,26 @@ class PassableApplianceCardEditor extends LitElement {
                 </select>
               </div>
               <div class="field-col">
-                <label class="field-label">Summary Tile Style</label>
+                <label class="field-label">Summary Layout</label>
                 <select
                   class="input-select"
-                  .value=${c.layout === "rings" ? "rings" : "hero"}
-                  @change=${(e) => this._updateField("layout", e.target.value)}
+                  .value=${layout}
+                  @change=${(e) => {
+                    const nextLayout = e.target.value;
+                    const next = { ...(this.config || {}), layout: nextLayout };
+                    if (["compact", "strip"].includes(nextLayout)) {
+                      delete next.show_summary_strip;
+                      delete next.show_footer_strip;
+                    }
+                    this._emit(next);
+                  }}
                 >
-                  <option value="hero">Hero Values</option>
-                  <option value="rings">Ring Gauges</option>
+                  <option value="compact">Consolidated Hero Card — 1 Summary Tile (Recommended)</option>
+                  <option value="strip">Minimal Single Bar — Ultra-Compact 1-Line Strip</option>
+                  <option value="active">Active Only — Hide Idle Appliances</option>
+                  <option value="tiles">Compact 2-Column Tiles (All Appliances)</option>
+                  <option value="rows">Stacked Appliance Rows (All Appliances)</option>
+                  <option value="rings">Circular Progress Rings (All Appliances)</option>
                 </select>
               </div>
             </div>
@@ -3629,6 +4468,12 @@ class PassableApplianceCardEditor extends LitElement {
               @input=${(e) => this._updateField("title", e.target.value)}
             ></ha-textfield>
 
+            <ha-textfield
+              label="Default Expanded Drawer (index or 'all')"
+              .value=${c.default_expanded_drawer || ""}
+              @input=${(e) => this._updateField("default_expanded_drawer", e.target.value)}
+            ></ha-textfield>
+
             <div class="toggle-row">
               <span>Show Card Header</span>
               <ha-switch
@@ -3639,14 +4484,14 @@ class PassableApplianceCardEditor extends LitElement {
             <div class="toggle-row">
               <span>Show Summary Strip (Summary Mode)</span>
               <ha-switch
-                .checked=${c.show_summary_strip !== false}
+                .checked=${c.show_summary_strip !== undefined ? Boolean(c.show_summary_strip) : defaultStrips}
                 @change=${(e) => this._updateField("show_summary_strip", e.target.checked)}
               ></ha-switch>
             </div>
             <div class="toggle-row">
               <span>Show Footer Strip (Summary Mode)</span>
               <ha-switch
-                .checked=${c.show_footer_strip !== false}
+                .checked=${c.show_footer_strip !== undefined ? Boolean(c.show_footer_strip) : defaultStrips}
                 @change=${(e) => this._updateField("show_footer_strip", e.target.checked)}
               ></ha-switch>
             </div>
